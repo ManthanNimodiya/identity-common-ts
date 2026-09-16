@@ -45,6 +45,7 @@
   "dependencies": {
     "@owf/crypto": "workspace:*",
     "@owf/identity-common": "workspace:*",
+    "@sd-jwt/sd-jwt-vc": "workspace:*",
     "zod": "catalog:"
   }
 }
