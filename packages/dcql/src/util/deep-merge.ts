@@ -1,9 +1,10 @@
 import { DcqlError } from '../dcql-error'
+import { DcqlNotDisclosed } from '../u-dcql'
 
 /**
- * Deep merge two objects. Null values will be overriden if there is a value in one
- * of the two objects. Objects can also be arrays, but otherwise only primitive types
- * are allowed
+ * Deep merge two objects. Undisclosed/empty slots (DcqlNotDisclosed or undefined)
+ * will be overridden if there is a value in one of the two objects.
+ * Objects can also be arrays, but otherwise only primitive types are allowed.
  */
 export function deepMerge(source: Array<unknown> | object, target: Array<unknown> | object): Array<unknown> | object {
   let newTarget = target
@@ -27,12 +28,14 @@ export function deepMerge(source: Array<unknown> | object, target: Array<unknown
       typeof val === 'object' &&
       (Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val))
     ) {
-      const newValue = deepMerge(
-        val,
-        newTarget[key as keyof typeof newTarget] ?? new (Object.getPrototypeOf(val).constructor)()
-      )
+      const targetVal = (newTarget as Record<string, unknown>)[key]
+      const validTarget =
+        targetVal !== DcqlNotDisclosed && targetVal !== undefined && targetVal !== null && typeof targetVal === 'object'
+          ? targetVal
+          : new (Object.getPrototypeOf(val).constructor)()
+      const newValue = deepMerge(val, validTarget as Array<unknown> | object)
       newTarget = setValue(newTarget, key, newValue)
-    } else if (val != null) {
+    } else if (val !== DcqlNotDisclosed && val !== undefined) {
       newTarget = setValue(newTarget, key, val)
     }
   }

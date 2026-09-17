@@ -3,7 +3,13 @@ import { DcqlParseError } from '../dcql-error/e-dcql.js'
 import { DcqlClaimsQuery } from '../dcql-query/m-dcql-claims-query.js'
 import type { DcqlCredentialQuery } from '../dcql-query/m-dcql-credential-query.js'
 import type { DcqlClaimsResult } from '../dcql-query-result/m-claims-result.js'
-import { asNonEmptyArrayOrUndefined, isNonEmptyArray, type ToNonEmptyArray, type vBaseSchemaAny } from '../u-dcql.js'
+import {
+  asNonEmptyArrayOrUndefined,
+  DcqlNotDisclosed,
+  isNonEmptyArray,
+  type ToNonEmptyArray,
+  type vBaseSchemaAny,
+} from '../u-dcql.js'
 import type { DcqlCredential } from '../u-dcql-credential.js'
 import { deepMerge } from '../util/deep-merge.js'
 
@@ -27,7 +33,10 @@ const getClaimParser = (path: Array<string | number | null>, values?: DcqlClaims
 
   return v.pipe(
     v.unknown(),
-    v.check((value) => value !== null && value !== undefined, `Expected claim '${path.join("'.'")}' to be defined`)
+    v.check(
+      (value) => value !== undefined && value !== (DcqlNotDisclosed as unknown),
+      `Expected claim '${path.join("'.'")}' to be defined`
+    )
   )
 }
 
@@ -107,9 +116,9 @@ export const getJsonClaimParser = (
           return NEVER
         }
 
-        // We need to preserve array ordering, so we add null elements for all items
+        // We need to preserve array ordering, so we add DcqlNotDisclosed elements for all items
         // before the current pathElement number
-        return [...dataset.value.slice(0, pathElement).map(() => null), result.output]
+        return [...dataset.value.slice(0, pathElement).map(() => DcqlNotDisclosed), result.output]
       })
     )
   }
@@ -145,7 +154,7 @@ export const getJsonClaimParser = (
         return NEVER
       }
 
-      return mapped.map((parsed) => (parsed.success ? parsed.output : null))
+      return mapped.map((parsed) => (parsed.success ? parsed.output : DcqlNotDisclosed))
     })
   )
 }

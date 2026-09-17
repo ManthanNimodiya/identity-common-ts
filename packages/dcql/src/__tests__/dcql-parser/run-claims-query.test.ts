@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runClaimsQuery } from '../../dcql-parser/dcql-claims-query-result.js'
+import { DcqlNotDisclosed } from '../../u-dcql.js'
 
 const namespacesExample = {
   'org.iso.18013.5.1': {
@@ -313,7 +314,7 @@ describe('Run Claims Query', () => {
           claim_id: undefined,
           output: {
             degrees: [
-              null,
+              DcqlNotDisclosed,
               {
                 type: 'Master of Science',
               },
@@ -329,7 +330,7 @@ describe('Run Claims Query', () => {
               {
                 university: 'University of Betelgeuse',
               },
-              null,
+              DcqlNotDisclosed,
             ],
           },
         },
@@ -467,7 +468,7 @@ describe('Run Claims Query', () => {
               {
                 university: 'University of Betelgeuse',
               },
-              null,
+              DcqlNotDisclosed,
             ],
           },
         },

@@ -2,6 +2,9 @@ import * as v from 'valibot'
 import type { UnknownBaseSchema } from './u-model'
 export const idRegex = /^[a-zA-Z0-9_-]+$/
 
+export const DcqlNotDisclosed = Symbol.for('dcql.not_disclosed')
+export type DcqlNotDisclosed = typeof DcqlNotDisclosed
+
 // biome-ignore lint/suspicious/noExplicitAny: we want to allow any schema here
 export type vBaseSchemaAny = v.BaseSchema<any, any, any>
 

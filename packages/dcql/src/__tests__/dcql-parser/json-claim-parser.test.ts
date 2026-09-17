@@ -1,9 +1,11 @@
 import * as v from 'valibot'
 import { describe, expect, it } from 'vitest'
 import { getJsonClaimParser } from '../../dcql-parser/dcql-claims-query-result.js'
+import { DcqlNotDisclosed } from '../../u-dcql.js'
 
 const claimsPathPointerExample = {
   name: 'Arthur Dent',
+  middle_name: null,
   address: {
     street_address: '42 Market Street',
     locality: 'Milliways',
@@ -20,6 +22,7 @@ const claimsPathPointerExample = {
     },
   ],
   nationalities: ['British', 'Betelgeusian'],
+  nullable_list: ['first', null, 'third'],
 }
 
 describe('Json Claim Parser', () => {
@@ -34,6 +37,19 @@ describe('Json Claim Parser', () => {
     const res = v.parse(parser, claimsPathPointerExample)
 
     expect(res).toEqual({ name: 'Arthur Dent' })
+  })
+
+  it('middle_name with literal null value', (_t) => {
+    const parser = getJsonClaimParser(
+      { path: ['middle_name'] },
+      {
+        index: 0,
+        presentation: false,
+      }
+    )
+    const res = v.parse(parser, claimsPathPointerExample)
+
+    expect(res).toEqual({ middle_name: null })
   })
 
   it('address', (_t) => {
@@ -77,7 +93,22 @@ describe('Json Claim Parser', () => {
     const res = v.parse(parser, claimsPathPointerExample)
 
     expect(res).toEqual({
-      nationalities: [null, 'Betelgeusian'],
+      nationalities: [DcqlNotDisclosed, 'Betelgeusian'],
+    })
+  })
+
+  it('nullable_list with literal null element', (_t) => {
+    const parser = getJsonClaimParser(
+      { path: ['nullable_list', 1] },
+      {
+        presentation: false,
+        index: 0,
+      }
+    )
+    const res = v.parse(parser, claimsPathPointerExample)
+
+    expect(res).toEqual({
+      nullable_list: [DcqlNotDisclosed, null],
     })
   })
 
@@ -122,7 +153,7 @@ describe('Json Claim Parser', () => {
     const res = v.parse(parser, claimsPathPointerExample)
 
     expect(res).toEqual({
-      nationalities: ['British', null],
+      nationalities: ['British', DcqlNotDisclosed],
     })
   })
 
