@@ -1,20 +1,27 @@
 import { DcqlError } from '../dcql-error'
+import { DcqlNotDisclosed } from '../u-dcql'
 
 /**
- * Deep merge two objects. Null values will be overriden if there is a value in one
- * of the two objects. Objects can also be arrays, but otherwise only primitive types
- * are allowed
+ * Deep merge two objects. Undisclosed/empty slots (DcqlNotDisclosed or undefined)
+ * will be overridden if there is a value in one of the two objects.
+ * Objects can also be arrays, but otherwise only primitive types are allowed.
  */
+function isMergeableObject(val: unknown): val is Array<unknown> | Record<string, unknown> {
+  return (
+    val !== null && typeof val === 'object' && (Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val))
+  )
+}
+
 export function deepMerge(source: Array<unknown> | object, target: Array<unknown> | object): Array<unknown> | object {
   let newTarget = target
 
-  if (Object.getPrototypeOf(source) !== Object.prototype && !Array.isArray(source)) {
+  if (!isMergeableObject(source)) {
     throw new DcqlError({
       message: 'source value provided to deepMerge is neither an array or object.',
       code: 'PARSE_ERROR',
     })
   }
-  if (Object.getPrototypeOf(target) !== Object.prototype && !Array.isArray(target)) {
+  if (!isMergeableObject(target)) {
     throw new DcqlError({
       message: 'target value provided to deepMerge is neither an array or object.',
       code: 'PARSE_ERROR',
@@ -22,17 +29,18 @@ export function deepMerge(source: Array<unknown> | object, target: Array<unknown
   }
 
   for (const [key, val] of Object.entries(source)) {
-    if (
-      val !== null &&
-      typeof val === 'object' &&
-      (Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val))
-    ) {
-      const newValue = deepMerge(
-        val,
-        newTarget[key as keyof typeof newTarget] ?? new (Object.getPrototypeOf(val).constructor)()
-      )
+    if (isMergeableObject(val)) {
+      const targetVal = (newTarget as Record<string, unknown>)[key]
+      if (targetVal !== undefined && targetVal !== DcqlNotDisclosed && !isMergeableObject(targetVal)) {
+        throw new DcqlError({
+          message: 'target value provided to deepMerge is neither an array or object.',
+          code: 'PARSE_ERROR',
+        })
+      }
+      const validTarget = isMergeableObject(targetVal) ? targetVal : new (Object.getPrototypeOf(val).constructor)()
+      const newValue = deepMerge(val, validTarget as Array<unknown> | object)
       newTarget = setValue(newTarget, key, newValue)
-    } else if (val != null) {
+    } else if (val !== DcqlNotDisclosed && val !== undefined) {
       newTarget = setValue(newTarget, key, val)
     }
   }
@@ -44,8 +52,11 @@ function setValue(target: any, key: string, value: any) {
   let newTarget = target
 
   if (Array.isArray(newTarget)) {
-    newTarget = [...newTarget]
-    newTarget[key as keyof typeof newTarget] = value
+    const index = Number(key)
+    newTarget = Array.from({ length: Math.max(newTarget.length, index + 1) }, (_, i) =>
+      i in newTarget ? newTarget[i] : DcqlNotDisclosed
+    )
+    newTarget[index] = value
   } else if (Object.getPrototypeOf(newTarget) === Object.prototype) {
     newTarget = { ...newTarget, [key]: value }
   } else {
