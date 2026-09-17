@@ -514,4 +514,50 @@ describe('Run Claims Query', () => {
       ],
     })
   })
+
+  it('dc+sd-jwt with disjoint array claims preserving DcqlNotDisclosed in claim set output', () => {
+    const credential = {
+      list: ['first', null, 'third', 'fourth'],
+    }
+
+    const result = runClaimsQuery(
+      {
+        format: 'dc+sd-jwt',
+        id: 'dc_sd_jwt',
+        multiple: false,
+        require_cryptographic_holder_binding: true,
+        claims: [
+          {
+            id: 'c1',
+            path: ['list', 1],
+          },
+          {
+            id: 'c2',
+            path: ['list', 3],
+          },
+        ],
+      },
+      {
+        credential: {
+          credential_format: 'dc+sd-jwt',
+          cryptographic_holder_binding: true,
+          claims: credential,
+          vct: 'SdJwtVc',
+        },
+        presentation: false,
+      }
+    )
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.valid_claim_sets[0].output).toStrictEqual({
+        list: [DcqlNotDisclosed, null, DcqlNotDisclosed, 'fourth'],
+      })
+      const list = (result.valid_claim_sets[0].output as { list: unknown[] }).list
+      expect(0 in list).toBe(true)
+      expect(1 in list).toBe(true)
+      expect(2 in list).toBe(true)
+      expect(3 in list).toBe(true)
+    }
+  })
 })
