@@ -41,6 +41,17 @@ export const getMdocClaimParser = (claimQuery: DcqlClaimsQuery.Mdoc) => {
       }
     : claimQuery
 
+  if (
+    !Array.isArray(mdocPathQuery.path) ||
+    mdocPathQuery.path.length !== 2 ||
+    typeof mdocPathQuery.path[0] !== 'string' ||
+    typeof mdocPathQuery.path[1] !== 'string'
+  ) {
+    throw new DcqlParseError({
+      message: `Invalid mdoc claim path: ${pathToString(mdocPathQuery.path ?? [])}. An mdoc claims path pointer must contain exactly two string components (namespace and element identifier).`,
+    })
+  }
+
   const namespace = mdocPathQuery.path[0]
   const field = mdocPathQuery.path[1]
 

@@ -59,4 +59,18 @@ describe('Mdoc Claim Parser', () => {
       "Expected claim 'org.iso.18013.5.1'.'family_name' to be 'NotDent' | 'WhyDent' but received 'Dent'"
     )
   })
+
+  it('throws DcqlParseError if path length is not 2', () => {
+    expect(() =>
+      // @ts-expect-error testing runtime validation with invalid path
+      getMdocClaimParser({ path: ['org.iso.18013.5.1', 'nationality', null] })
+    ).toThrowError(/Invalid mdoc claim path/)
+  })
+
+  it('throws DcqlParseError if path components are not strings', () => {
+    expect(() =>
+      // @ts-expect-error testing runtime validation with invalid types
+      getMdocClaimParser({ path: ['org.iso.18013.5.1', 123] })
+    ).toThrowError(/Invalid mdoc claim path/)
+  })
 })
