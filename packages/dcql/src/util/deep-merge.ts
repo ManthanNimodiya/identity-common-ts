@@ -6,16 +6,22 @@ import { DcqlNotDisclosed } from '../u-dcql'
  * will be overridden if there is a value in one of the two objects.
  * Objects can also be arrays, but otherwise only primitive types are allowed.
  */
+function isMergeableObject(val: unknown): val is Array<unknown> | Record<string, unknown> {
+  return (
+    val !== null && typeof val === 'object' && (Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val))
+  )
+}
+
 export function deepMerge(source: Array<unknown> | object, target: Array<unknown> | object): Array<unknown> | object {
   let newTarget = target
 
-  if (Object.getPrototypeOf(source) !== Object.prototype && !Array.isArray(source)) {
+  if (!isMergeableObject(source)) {
     throw new DcqlError({
       message: 'source value provided to deepMerge is neither an array or object.',
       code: 'PARSE_ERROR',
     })
   }
-  if (Object.getPrototypeOf(target) !== Object.prototype && !Array.isArray(target)) {
+  if (!isMergeableObject(target)) {
     throw new DcqlError({
       message: 'target value provided to deepMerge is neither an array or object.',
       code: 'PARSE_ERROR',
@@ -23,16 +29,9 @@ export function deepMerge(source: Array<unknown> | object, target: Array<unknown
   }
 
   for (const [key, val] of Object.entries(source)) {
-    if (
-      val !== null &&
-      typeof val === 'object' &&
-      (Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val))
-    ) {
+    if (isMergeableObject(val)) {
       const targetVal = (newTarget as Record<string, unknown>)[key]
-      const validTarget =
-        targetVal !== DcqlNotDisclosed && targetVal !== undefined && targetVal !== null && typeof targetVal === 'object'
-          ? targetVal
-          : new (Object.getPrototypeOf(val).constructor)()
+      const validTarget = isMergeableObject(targetVal) ? targetVal : new (Object.getPrototypeOf(val).constructor)()
       const newValue = deepMerge(val, validTarget as Array<unknown> | object)
       newTarget = setValue(newTarget, key, newValue)
     } else if (val !== DcqlNotDisclosed && val !== undefined) {
