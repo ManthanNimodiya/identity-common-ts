@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We release patches for security vulnerabilities. The following table shows which versions are currently supported:
+We release security patches and updates for actively maintained versions. The table below outlines supported versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -10,54 +10,53 @@ We release patches for security vulnerabilities. The following table shows which
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in this project, please report it responsibly.
+If you discover a potential security vulnerability in this project, please report it responsibly and privately.
 
-**Please do NOT report security vulnerabilities through public GitHub issues.**
+**Please do NOT disclose security vulnerabilities through public GitHub issues, discussions, or pull requests.**
 
-Instead, please report them to the OpenWallet Foundation security team:
+### Preferred Reporting Channels
 
-1. **Email**: <security@openwallet.foundation>
-2. **Subject**: `[SECURITY] identity-common-ts: <brief description>`
+1. **GitHub Private Vulnerability Reporting**:
+   Submit a confidential advisory directly via [GitHub Security Advisories](https://github.com/openwallet-foundation-labs/identity-common-ts/security/advisories/new).
 
-Please include the following information in your report:
+2. **Email**:
+   Send an encrypted or confidential email to the OpenWallet Foundation security team:
+   - **Recipient**: <security@openwallet.foundation>
+   - **Subject**: `[SECURITY] identity-common-ts: <brief description>`
 
-- Type of issue (e.g., buffer overflow, injection, etc.)
-- Full paths of source file(s) related to the issue
-- Location of the affected source code (tag/branch/commit or direct URL)
-- Any special configuration required to reproduce the issue
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit it
+### Information to Include
 
-## Response Timeline
+To help us triage and resolve the report quickly, please include as much detail as possible:
 
-- We will acknowledge receipt of your vulnerability report within **3 business days**
-- We will provide a more detailed response within **10 business days**
-- We will work to fix the vulnerability as quickly as possible
+- Type and severity of the vulnerability (e.g., authentication bypass, injection, cryptographic flaw)
+- Affected packages and version(s)
+- Location of the affected code (tag, branch, commit, or direct file link)
+- Clear step-by-step instructions to reproduce the issue
+- Minimal proof-of-concept (PoC) code or sample inputs
+- Potential impact and exploitation scenarios
 
-## Disclosure Policy
+## Response Timeline and SLAs
 
-When we receive a security bug report, we will:
+- **Initial Acknowledgment**: Within **3 business days** of receipt.
+- **Triage and Assessment**: Within **10 business days**, including preliminary severity assessment and reproduction verification.
+- **Remediation & Patch**: Fix development and testing will be prioritized based on severity.
+- **Coordinated Disclosure**: Fixes will be released alongside a published security advisory and CVE identifier (where applicable).
 
-1. Confirm the problem and determine affected versions
-2. Audit code to find any similar problems
-3. Prepare fixes for all supported versions
-4. Release patches as soon as possible
+## Coordinated Vulnerability Disclosure Process
+
+When a security vulnerability is reported and confirmed:
+
+1. **Investigation**: Maintainers verify the report and determine all affected packages and versions.
+2. **Patch Development**: Fixes are developed in private forks / advisories and thoroughly tested against regressions.
+3. **Release**: Security releases are published to package registries.
+4. **Advisory Publication**: A public security advisory is published on GitHub and relevant mailing lists detailing the impact, affected versions, and mitigation/upgrade steps.
 
 ## Security Best Practices
 
-When using this library, please follow these security best practices:
+When integrating this library into your application:
 
-1. **Keep dependencies up to date**: Regularly update to the latest version
-2. **Validate inputs**: Always validate inputs before passing them to library functions
-3. **Use secure cryptographic implementations**: When providing crypto callbacks, use well-tested implementations
-4. **Follow the principle of least privilege**: Only request the permissions your application needs
-
-## Security-Related Configuration
-
-This library is designed to be platform-agnostic and requires users to provide cryptographic implementations. When doing so:
-
-- Use secure random number generators
-- Use approved cryptographic algorithms and key sizes
-- Properly manage and protect cryptographic keys
-- Follow industry standards for JWT/CWT validation
+1. **Keep dependencies updated**: Regularly apply dependency updates and audit transitive dependencies.
+2. **Validate inputs**: Always validate incoming presentation payloads, credentials, and parameters against the corresponding schemas.
+3. **Use secure cryptographic implementations**: Provide production-grade, vetted cryptographic functions and secure random number generators for keys and salts.
+4. **Principle of least privilege**: Request only necessary disclosure frames and limit token lifetimes appropriately.
+5. **Key Management**: Protect private keys in secure hardware or dedicated key management systems (KMS).
