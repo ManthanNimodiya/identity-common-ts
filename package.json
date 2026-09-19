@@ -24,6 +24,7 @@
     "esm:check": "node scripts/check-package-esm-imports.mjs",
     "ci:check": "pnpm style:check && pnpm md:check && pnpm types:check && pnpm test",
     "build": "pnpm -r build",
+    "build:fuzz": "tsdown tests/fuzz/sd-jwt.fuzz.js tests/fuzz/cbor.fuzz.js tests/fuzz/dcql.fuzz.js --format esm --out-dir dist-fuzz",
     "test": "vitest",
     "create-package": "node scripts/create-package.mjs",
     "release": "pnpm packages:check && pnpm types:check && pnpm build && pnpm esm:check && pnpm changeset publish --no-git-tag 2>&1 | tee changeset-publish.log",
