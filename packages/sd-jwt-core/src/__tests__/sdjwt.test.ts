@@ -373,4 +373,88 @@ describe('SD JWT', () => {
     expect(jwt.signature).toEqual(decoded.jwt.signature)
     expect(decoded.disclosures).toEqual([])
   })
+
+  test('nested disclosures are not mutated during unpack (issue #264)', async () => {
+    const claims = {
+      iss: 'issuer',
+      address: {
+        geo: {
+          lat: 1,
+        },
+      },
+    }
+    const disclosureFrame: DisclosureFrame<typeof claims> = {
+      _sd: ['address'],
+      address: {
+        geo: {
+          _sd: ['lat'],
+        },
+      },
+    }
+
+    const { packedClaims, disclosures } = await pack(claims, disclosureFrame, hash, generateSalt)
+    const { privateKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { ...(packedClaims as Record<string, unknown>), _sd_alg: 'sha-256' },
+    })
+    await jwt.sign(testSigner)
+    const sdJwt = new SDJwt({ jwt, disclosures })
+    const compact = sdJwt.encodeSDJwt()
+
+    const decoded = await SDJwt.fromEncode(compact, hasher)
+    const claims1 = await decoded.getClaims(hasher)
+    expect(claims1).toEqual(claims)
+
+    // Second call to getClaims on the same decoded instance must not throw
+    const claims2 = await decoded.getClaims(hasher)
+    expect(claims2).toEqual(claims)
+  })
+
+  test('nested array disclosures are not mutated during unpack (issue #264)', async () => {
+    const claims = {
+      iss: 'issuer',
+      list: [
+        {
+          item: 'first',
+        },
+      ],
+    }
+    const disclosureFrame: DisclosureFrame<typeof claims> = {
+      _sd: ['list'],
+      list: {
+        _sd: [0],
+        0: {
+          _sd: ['item'],
+        },
+      },
+    }
+
+    const { packedClaims, disclosures } = await pack(claims, disclosureFrame, hash, generateSalt)
+    const { privateKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { ...(packedClaims as Record<string, unknown>), _sd_alg: 'sha-256' },
+    })
+    await jwt.sign(testSigner)
+    const sdJwt = new SDJwt({ jwt, disclosures })
+    const compact = sdJwt.encodeSDJwt()
+
+    const decoded = await SDJwt.fromEncode(compact, hasher)
+    const claims1 = await decoded.getClaims(hasher)
+    expect(claims1).toEqual(claims)
+
+    const claims2 = await decoded.getClaims(hasher)
+    expect(claims2).toEqual(claims)
+  })
 })

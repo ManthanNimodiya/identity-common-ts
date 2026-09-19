@@ -148,8 +148,13 @@ const unpackArray = (
           const presentKey = prefix ? `${prefix}.${idx}` : `${idx}`
           keys[presentKey] = hash
 
+          const clonedValue =
+            typeof disclosed.value === 'object' && disclosed.value !== null
+              ? JSON.parse(JSON.stringify(disclosed.value))
+              : disclosed.value
+
           const { unpackedObj, disclosureKeymap: disclosureKeys } = unpackObjInternal(
-            disclosed.value,
+            clonedValue,
             map,
             presentKey,
             seenDigests
@@ -254,8 +259,13 @@ const unpackObjInternal = (
           const presentKey = prefix ? `${prefix}.${escapedKey}` : escapedKey
           keys[presentKey] = hash
 
+          const clonedValue =
+            typeof disclosed.value === 'object' && disclosed.value !== null
+              ? JSON.parse(JSON.stringify(disclosed.value))
+              : disclosed.value
+
           const { unpackedObj, disclosureKeymap: disclosureKeys } = unpackObjInternal(
-            disclosed.value,
+            clonedValue,
             map,
             presentKey,
             seenDigests
