@@ -314,14 +314,20 @@ export class SDJwtInstance<ExtendedPayload extends SdJwtPayload, T = unknown> {
       const message = error.message.toLowerCase()
       if (message.includes('hasher not found')) return 'HASHER_NOT_FOUND'
       if (message.includes('verifier not found')) return 'VERIFIER_NOT_FOUND'
-      if (message.includes('invalid sd jwt') || message.includes('invalid jwt')) return 'INVALID_SD_JWT'
+      if (message.includes('signature')) return 'INVALID_JWT_SIGNATURE'
       if (message.includes('not yet valid')) return 'JWT_NOT_YET_VALID'
       if (message.includes('expired')) return 'JWT_EXPIRED'
-      if (message.includes('signature')) return 'INVALID_JWT_SIGNATURE'
-      if (message.includes('missing required claim')) return 'MISSING_REQUIRED_CLAIMS'
+      if (message.includes('too old')) return 'JWT_TOO_OLD'
+      if (message.includes('invalid audience')) return 'INVALID_AUDIENCE'
+      if (message.includes('invalid issuer')) return 'INVALID_ISSUER'
+      if (message.includes('invalid subject')) return 'INVALID_SUBJECT'
+      if (message.includes('invalid vct') || message.includes('vct verification failed')) return 'INVALID_VCT'
+      if (message.includes('missing required claim') || message.includes('claim is missing'))
+        return 'MISSING_REQUIRED_CLAIMS'
       if (message.includes('key binding jwt not exist')) return 'KEY_BINDING_JWT_MISSING'
       if (message.includes('key binding verifier not found')) return 'KEY_BINDING_VERIFIER_NOT_FOUND'
       if (message.includes('sd_hash')) return 'KEY_BINDING_SD_HASH_INVALID'
+      if (message.includes('invalid sd jwt') || message.includes('invalid jwt')) return 'INVALID_SD_JWT'
       return 'UNKNOWN_ERROR'
     }
 

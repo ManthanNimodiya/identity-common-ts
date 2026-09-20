@@ -936,4 +936,69 @@ describe('index', () => {
       expect(result.errors.some((e) => e.code === 'MISSING_REQUIRED_CLAIMS')).toBe(true)
     }
   })
+
+  test('safeVerify - invalid issuer, subject, audience, maxAge, and vct errors', async () => {
+    const { signer, verifier } = createSignerVerifier()
+    const sdjwt = new SDJwtInstance<SdJwtPayload>({
+      signer,
+      signAlg: 'EdDSA',
+      verifier,
+      hasher: digest,
+      saltGenerator: generateSalt,
+    })
+
+    const credential = await sdjwt.issue({
+      iss: 'https://issuer.example.com',
+      sub: 'user-123',
+      aud: 'https://aud.example.com',
+      vct: 'https://vct.example.com',
+      iat: 1000,
+    })
+
+    // invalid issuer
+    const resultIssuer = await sdjwt.safeVerify(credential, {
+      expectedIssuer: 'https://wrong-issuer.example.com',
+    })
+    expect(resultIssuer.success).toBe(false)
+    if (!resultIssuer.success) {
+      expect(resultIssuer.errors.some((e) => e.code === 'INVALID_ISSUER')).toBe(true)
+    }
+
+    // invalid subject
+    const resultSubject = await sdjwt.safeVerify(credential, {
+      expectedSubject: 'user-wrong',
+    })
+    expect(resultSubject.success).toBe(false)
+    if (!resultSubject.success) {
+      expect(resultSubject.errors.some((e) => e.code === 'INVALID_SUBJECT')).toBe(true)
+    }
+
+    // invalid audience
+    const resultAudience = await sdjwt.safeVerify(credential, {
+      expectedAudience: 'https://wrong-aud.example.com',
+    })
+    expect(resultAudience.success).toBe(false)
+    if (!resultAudience.success) {
+      expect(resultAudience.errors.some((e) => e.code === 'INVALID_AUDIENCE')).toBe(true)
+    }
+
+    // jwt too old
+    const resultTooOld = await sdjwt.safeVerify(credential, {
+      currentDate: 2000,
+      maxAgeSeconds: 50,
+    })
+    expect(resultTooOld.success).toBe(false)
+    if (!resultTooOld.success) {
+      expect(resultTooOld.errors.some((e) => e.code === 'JWT_TOO_OLD')).toBe(true)
+    }
+
+    // invalid vct
+    const resultVct = await sdjwt.safeVerify(credential, {
+      expectedVct: 'https://wrong-vct.example.com',
+    })
+    expect(resultVct.success).toBe(false)
+    if (!resultVct.success) {
+      expect(resultVct.errors.some((e) => e.code === 'INVALID_VCT')).toBe(true)
+    }
+  })
 })

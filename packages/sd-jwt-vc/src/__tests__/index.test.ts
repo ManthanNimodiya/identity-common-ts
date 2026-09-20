@@ -240,4 +240,45 @@ describe('Decode & Claims', () => {
     expect(claims.aud).toBe('https://verifier.example.com')
     expect(claims.jti).toBe('urn:uuid:12345-67890')
   })
+
+  test('verify should validate expectedIssuer, expectedAudience, and expectedVct', async () => {
+    const payload: SdJwtVcPayload = {
+      iat,
+      iss: 'https://issuer.example.com',
+      vct: 'https://credentials.example.com/identity_credential',
+      aud: 'https://verifier.example.com',
+    }
+
+    const encoded = await sdjwt.issue(payload)
+
+    // Valid verification
+    await expect(
+      sdjwt.verify(encoded, {
+        expectedIssuer: 'https://issuer.example.com',
+        expectedAudience: 'https://verifier.example.com',
+        expectedVct: 'https://credentials.example.com/identity_credential',
+      })
+    ).resolves.toBeDefined()
+
+    // Invalid issuer
+    await expect(
+      sdjwt.verify(encoded, {
+        expectedIssuer: 'https://other-issuer.example.com',
+      })
+    ).rejects.toThrow('Verify Error: Invalid issuer')
+
+    // Invalid audience
+    await expect(
+      sdjwt.verify(encoded, {
+        expectedAudience: 'https://other-verifier.example.com',
+      })
+    ).rejects.toThrow('Verify Error: Invalid audience')
+
+    // Invalid vct
+    await expect(
+      sdjwt.verify(encoded, {
+        expectedVct: 'https://other-vct.example.com',
+      })
+    ).rejects.toThrow('Verify Error: Invalid VCT')
+  })
 })
