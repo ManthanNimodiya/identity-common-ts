@@ -1,13 +1,19 @@
 import { hex } from '@owf/identity-common'
 import { describe, expect, test } from 'vitest'
+import { z } from 'zod'
 import {
   CoseKey,
   cborDecode,
+  cborEncode,
   ProtectedHeaders,
   RegisteredCwtHeaderClaimKey,
   Sign1,
+  type Sign1EncodedStructure,
   SignatureAlgorithm,
+  sign1DecodedSchema,
+  sign1EncodedSchema,
   UnprotectedHeaders,
+  zUint8Array,
 } from '../../src'
 import { sign1Context } from './context'
 import { sign1TestVector01, sign1TestVector02 } from './vectors'
@@ -80,5 +86,54 @@ describe('sign1', () => {
         expect(await sign1ResignedWithSignature.verifySignature({ key }, sign1Context)).toBe(false)
       }
     })
+  })
+
+  test('subclass decode respects subclass encodingSchema and returns subclass instance', () => {
+    const customSign1DecodedSchema = sign1DecodedSchema.extend({
+      payload: zUint8Array.nullable().refine((p) => p !== null && p.length >= 5, { message: 'Payload too short' }),
+    })
+
+    class CustomSign1 extends Sign1 {
+      public static override get encodingSchema() {
+        return z.codec(sign1EncodedSchema, customSign1DecodedSchema, {
+          encode: (decoded) =>
+            [
+              decoded.protectedHeaders.encodedStructure,
+              decoded.unprotectedHeaders.encodedStructure,
+              decoded.payload,
+              decoded.signature,
+            ] satisfies Sign1EncodedStructure,
+          decode: ([protectedHeaders, unprotected, payload, signature]) => ({
+            protectedHeaders: ProtectedHeaders.fromEncodedStructure(protectedHeaders),
+            unprotectedHeaders: UnprotectedHeaders.fromEncodedStructure(unprotected),
+            payload,
+            signature,
+          }),
+        })
+      }
+    }
+
+    // Tagged input with valid payload
+    const decodedTagged = CustomSign1.decode(cbor)
+    expect(decodedTagged).toBeInstanceOf(CustomSign1)
+    expect(decodedTagged.payload).toBeDefined()
+
+    // Untagged input with valid payload
+    const untaggedCbor = (cborDecode(cbor) as Sign1).encodedStructure
+    const decodedUntagged = CustomSign1.decode(cborEncode(untaggedCbor))
+    expect(decodedUntagged).toBeInstanceOf(CustomSign1)
+
+    // Subclass error validation with short payload (< 5 bytes)
+    const shortPayloadSign1 = Sign1.create({
+      protectedHeaders: new Map(),
+      unprotectedHeaders: new Map(),
+      payload: new Uint8Array([1, 2]),
+      signature: new Uint8Array([3, 4]),
+    })
+    const shortTaggedBytes = shortPayloadSign1.encode()
+    const shortUntaggedBytes = cborEncode(shortPayloadSign1.encodedStructure)
+
+    expect(() => CustomSign1.decode(shortTaggedBytes)).toThrow('Error decoding CustomSign1')
+    expect(() => CustomSign1.decode(shortUntaggedBytes)).toThrow('Error decoding CustomSign1')
   })
 })

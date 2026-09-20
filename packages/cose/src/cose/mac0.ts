@@ -157,9 +157,13 @@ export class Mac0 extends CborStructure<Mac0EncodedStructure, Mac0DecodedStructu
       // NOTE: If decoded with Mac0 tag, the cbor decoder already transforms to the class instances
       // In that case we create new instance based on the decoded structure, to ensure we create the
       // instance based on this (and ensure extended classes work)
-      rawStructure instanceof Mac0
+      // biome-ignore lint/complexity/noThisInStatic: this check is intentional for subclass support
+      rawStructure instanceof Mac0 && rawStructure.constructor === this
         ? rawStructure.decodedStructure
-        : Mac0.fromEncodedStructure(rawStructure as EncodedStructureType<Mac0>).decodedStructure
+        : // biome-ignore lint/complexity/noThisInStatic: this.fromEncodedStructure is intentional for subclass support
+          this.fromEncodedStructure(
+            (rawStructure instanceof Mac0 ? rawStructure.encodedStructure : rawStructure) as EncodedStructureType<T>
+          ).decodedStructure
     ) as unknown as T
   }
 

@@ -167,9 +167,13 @@ export class Sign1 extends CborStructure<Sign1EncodedStructure, Sign1DecodedStru
       // NOTE: If decoded with Sign1 tag, the cbor decoder already transforms to the class instances
       // In that case we create new instance based on the decoded structure, to ensure we create the
       // instance based on this (and ensure extended classes work)
-      rawStructure instanceof Sign1
+      // biome-ignore lint/complexity/noThisInStatic: this check is intentional for subclass support
+      rawStructure instanceof Sign1 && rawStructure.constructor === this
         ? rawStructure.decodedStructure
-        : Sign1.fromEncodedStructure(rawStructure as EncodedStructureType<Sign1>).decodedStructure
+        : // biome-ignore lint/complexity/noThisInStatic: this.fromEncodedStructure is intentional for subclass support
+          this.fromEncodedStructure(
+            (rawStructure instanceof Sign1 ? rawStructure.encodedStructure : rawStructure) as EncodedStructureType<T>
+          ).decodedStructure
     ) as unknown as T
   }
 
