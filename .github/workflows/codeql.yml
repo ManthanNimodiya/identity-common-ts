@@ -41,3 +41,4 @@ jobs:
         uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         with:
           category: "/language:${{ matrix.language }}"
+          upload: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
