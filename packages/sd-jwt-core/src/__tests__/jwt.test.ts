@@ -258,4 +258,159 @@ describe('JWT', () => {
     await jwt.sign(testSigner)
     await jwt.verify(testVerifier, { skewSeconds: 2 })
   })
+
+  test('verify with expectedIssuer', async () => {
+    const { privateKey, publicKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+    const testVerifier: Verifier = async (data: string, sig: string) => {
+      return Crypto.verify(null, Buffer.from(data), publicKey, Buffer.from(sig, 'base64url'))
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { iss: 'https://issuer.example.com' },
+    })
+    await jwt.sign(testSigner)
+
+    // matching string
+    await expect(jwt.verify(testVerifier, { expectedIssuer: 'https://issuer.example.com' })).resolves.toBeDefined()
+
+    // matching array
+    await expect(
+      jwt.verify(testVerifier, { expectedIssuer: ['https://other.example.com', 'https://issuer.example.com'] })
+    ).resolves.toBeDefined()
+
+    // mismatching string
+    await expect(jwt.verify(testVerifier, { expectedIssuer: 'https://other.example.com' })).rejects.toThrow(
+      'Verify Error: Invalid issuer'
+    )
+
+    // missing iss claim
+    const jwtNoIss = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { foo: 'bar' },
+    })
+    await jwtNoIss.sign(testSigner)
+    await expect(jwtNoIss.verify(testVerifier, { expectedIssuer: 'https://issuer.example.com' })).rejects.toThrow(
+      'Verify Error: Invalid issuer'
+    )
+  })
+
+  test('verify with expectedSubject', async () => {
+    const { privateKey, publicKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+    const testVerifier: Verifier = async (data: string, sig: string) => {
+      return Crypto.verify(null, Buffer.from(data), publicKey, Buffer.from(sig, 'base64url'))
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { sub: 'user-123' },
+    })
+    await jwt.sign(testSigner)
+
+    // matching string
+    await expect(jwt.verify(testVerifier, { expectedSubject: 'user-123' })).resolves.toBeDefined()
+
+    // matching array
+    await expect(jwt.verify(testVerifier, { expectedSubject: ['user-456', 'user-123'] })).resolves.toBeDefined()
+
+    // mismatching string
+    await expect(jwt.verify(testVerifier, { expectedSubject: 'user-456' })).rejects.toThrow(
+      'Verify Error: Invalid subject'
+    )
+
+    // missing sub claim
+    const jwtNoSub = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { foo: 'bar' },
+    })
+    await jwtNoSub.sign(testSigner)
+    await expect(jwtNoSub.verify(testVerifier, { expectedSubject: 'user-123' })).rejects.toThrow(
+      'Verify Error: Invalid subject'
+    )
+  })
+
+  test('verify with maxAgeSeconds', async () => {
+    const { privateKey, publicKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+    const testVerifier: Verifier = async (data: string, sig: string) => {
+      return Crypto.verify(null, Buffer.from(data), publicKey, Buffer.from(sig, 'base64url'))
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { iat: 1000 },
+    })
+    await jwt.sign(testSigner)
+
+    // within maxAge
+    await expect(jwt.verify(testVerifier, { currentDate: 1050, maxAgeSeconds: 60 })).resolves.toBeDefined()
+
+    // exactly at limit
+    await expect(jwt.verify(testVerifier, { currentDate: 1060, maxAgeSeconds: 60 })).resolves.toBeDefined()
+
+    // exceeded maxAge
+    await expect(jwt.verify(testVerifier, { currentDate: 1061, maxAgeSeconds: 60 })).rejects.toThrow(
+      'Verify Error: JWT is too old'
+    )
+
+    // exceeded maxAge but saved by skew
+    await expect(
+      jwt.verify(testVerifier, { currentDate: 1065, maxAgeSeconds: 60, skewSeconds: 10 })
+    ).resolves.toBeDefined()
+
+    // missing iat claim
+    const jwtNoIat = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { foo: 'bar' },
+    })
+    await jwtNoIat.sign(testSigner)
+    await expect(jwtNoIat.verify(testVerifier, { currentDate: 1000, maxAgeSeconds: 60 })).rejects.toThrow(
+      'Verify Error: JWT iat claim is missing'
+    )
+  })
+
+  test('verify with expectedVct', async () => {
+    const { privateKey, publicKey } = Crypto.generateKeyPairSync('ed25519')
+    const testSigner: Signer = async (data: string) => {
+      const sig = Crypto.sign(null, Buffer.from(data), privateKey)
+      return Buffer.from(sig).toString('base64url')
+    }
+    const testVerifier: Verifier = async (data: string, sig: string) => {
+      return Crypto.verify(null, Buffer.from(data), publicKey, Buffer.from(sig, 'base64url'))
+    }
+
+    const jwt = new Jwt({
+      header: { alg: 'EdDSA' },
+      payload: { vct: 'https://credentials.example.com/identity_credential' },
+    })
+    await jwt.sign(testSigner)
+
+    // matching string
+    await expect(
+      jwt.verify(testVerifier, { expectedVct: 'https://credentials.example.com/identity_credential' })
+    ).resolves.toBeDefined()
+
+    // matching array
+    await expect(
+      jwt.verify(testVerifier, {
+        expectedVct: ['https://other.example.com', 'https://credentials.example.com/identity_credential'],
+      })
+    ).resolves.toBeDefined()
+
+    // mismatch
+    await expect(jwt.verify(testVerifier, { expectedVct: 'https://other.example.com' })).rejects.toThrow(
+      'Verify Error: Invalid VCT'
+    )
+  })
 })

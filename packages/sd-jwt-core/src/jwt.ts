@@ -36,6 +36,26 @@ export type VerifierOptions = {
   expectedAudience?: string | string[]
 
   /**
+   * Expected issuer for the processed SD-JWT payload.
+   */
+  expectedIssuer?: string | string[]
+
+  /**
+   * Expected subject for the processed SD-JWT payload.
+   */
+  expectedSubject?: string | string[]
+
+  /**
+   * Maximum acceptable age of the JWT in seconds, measured from iat.
+   */
+  maxAgeSeconds?: number
+
+  /**
+   * Expected Verifiable Credential Type (vct) for SD-JWT VC payload.
+   */
+  expectedVct?: string | string[]
+
+  /**
    * Allowed JOSE algorithms for issuer-signed JWTs. `none` is always rejected.
    */
   allowedIssuerAlgorithms?: string[]
@@ -103,6 +123,56 @@ const validateAudience = (payload: Record<string, unknown>, expectedAudience: st
   }
 }
 
+const validateIssuer = (payload: Record<string, unknown>, expectedIssuer: string | string[] | undefined) => {
+  if (expectedIssuer === undefined) return
+
+  const expectedIssuers = Array.isArray(expectedIssuer) ? expectedIssuer : [expectedIssuer]
+  const iss = payload.iss
+
+  if (typeof iss !== 'string' || !expectedIssuers.includes(iss)) {
+    throw new SDJWTException('Verify Error: Invalid issuer')
+  }
+}
+
+const validateSubject = (payload: Record<string, unknown>, expectedSubject: string | string[] | undefined) => {
+  if (expectedSubject === undefined) return
+
+  const expectedSubjects = Array.isArray(expectedSubject) ? expectedSubject : [expectedSubject]
+  const sub = payload.sub
+
+  if (typeof sub !== 'string' || !expectedSubjects.includes(sub)) {
+    throw new SDJWTException('Verify Error: Invalid subject')
+  }
+}
+
+const validateVct = (payload: Record<string, unknown>, expectedVct: string | string[] | undefined) => {
+  if (expectedVct === undefined) return
+
+  const expectedVcts = Array.isArray(expectedVct) ? expectedVct : [expectedVct]
+  const vct = payload.vct
+
+  if (typeof vct !== 'string' || !expectedVcts.includes(vct)) {
+    throw new SDJWTException('Verify Error: Invalid VCT')
+  }
+}
+
+const validateMaxAge = (
+  iat: number | undefined,
+  currentDate: number,
+  skew: number,
+  maxAgeSeconds: number | undefined
+) => {
+  if (maxAgeSeconds === undefined) return
+
+  if (iat === undefined) {
+    throw new SDJWTException('Verify Error: JWT iat claim is missing')
+  }
+
+  if (iat + maxAgeSeconds + skew < currentDate) {
+    throw new SDJWTException('Verify Error: JWT is too old')
+  }
+}
+
 export const validateJwtPayload = (payload: Record<string, unknown> | undefined, options?: VerifierOptions) => {
   if (!payload) {
     throw new SDJWTException('Verify Error: JWT payload is missing')
@@ -126,7 +196,11 @@ export const validateJwtPayload = (payload: Record<string, unknown> | undefined,
     throw new SDJWTException('Verify Error: JWT is expired')
   }
 
+  validateMaxAge(iat, currentDate, skew, options?.maxAgeSeconds)
   validateAudience(payload, options?.expectedAudience)
+  validateIssuer(payload, options?.expectedIssuer)
+  validateSubject(payload, options?.expectedSubject)
+  validateVct(payload, options?.expectedVct)
 }
 
 // This class is used to create and verify JWT
