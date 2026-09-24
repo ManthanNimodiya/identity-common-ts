@@ -269,9 +269,13 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
     }
     const hasher = this.userConfig.hasher
 
-    const resolvedMetadata = typeMetadata ?? (await this.getVct(encodedSDJwt))
+    let resolvedMetadata = typeMetadata ?? (await this.getVct(encodedSDJwt))
     if (!resolvedMetadata) {
       throw new SDJWTException('Type metadata not found or could not be resolved')
+    }
+
+    if (!('mergedTypeMetadata' in resolvedMetadata) && resolvedMetadata.extends) {
+      resolvedMetadata = await this.resolveVctExtendsChain(resolvedMetadata)
     }
 
     const sdjwt = await SDJwt.fromEncode(encodedSDJwt, hasher)
