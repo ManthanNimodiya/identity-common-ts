@@ -261,4 +261,90 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     expect(res.invalidNonSelectivelyDisclosableClaims).toEqual([])
     expect(res.invalidSelectivelyDisclosableClaims).toEqual([])
   })
+
+  test('respects extended type metadata inheritance chain during verify and safeVerify', async () => {
+    const baseMetadata: TypeMetadataFormat = {
+      vct: 'http://example.com/base-identity',
+      name: 'Base Identity',
+      claims: [
+        { path: ['iss'], sd: 'never' },
+        { path: ['vct'], sd: 'never' },
+        { path: ['given_name'], sd: 'always', mandatory: true },
+        { path: ['family_name'], sd: 'always', mandatory: true },
+      ],
+    }
+
+    const extendingMetadata: TypeMetadataFormat = {
+      vct: 'http://example.com/employee-credential',
+      name: 'Employee Credential',
+      extends: 'http://example.com/base-identity',
+      claims: [
+        { path: ['employee_id'], sd: 'always', mandatory: true },
+        { path: ['department'], sd: 'always' },
+      ],
+    }
+
+    const sdJwtVc = new SDJwtVcInstance({
+      signer,
+      verifier,
+      hasher: digest,
+      saltGenerator: generateSalt,
+      signAlg: 'EdDSA',
+      loadTypeMetadataFormat: true,
+      vctFetcher: async (vct) => {
+        if (vct === 'http://example.com/employee-credential') {
+          return extendingMetadata
+        }
+        if (vct === 'http://example.com/base-identity') {
+          return baseMetadata
+        }
+        return undefined
+      },
+    })
+
+    // Valid credential with claims from both base and extending metadata
+    const payload = {
+      vct: 'http://example.com/employee-credential',
+      iss: 'https://issuer.example.com',
+      given_name: 'Alice',
+      family_name: 'Smith',
+      employee_id: 'EMP-001',
+    }
+
+    const compact = await sdJwtVc.issue(payload, {
+      _sd: ['given_name', 'family_name', 'employee_id'],
+    })
+
+    const verifyRes = await sdJwtVc.verify(compact)
+    expect(verifyRes.typeMetadata?.typeMetadataChain).toHaveLength(2)
+    expect(verifyRes.typeMetadata?.mergedTypeMetadata.claims).toHaveLength(6)
+    expect(verifyRes.typeMetadataVerification).toEqual({
+      extraClaims: [],
+      missingMandatoryClaims: [],
+      invalidNonSelectivelyDisclosableClaims: [],
+      invalidSelectivelyDisclosableClaims: [],
+    })
+
+    // Missing mandatory claim from base metadata (family_name)
+    const missingBasePayload = {
+      vct: 'http://example.com/employee-credential',
+      iss: 'https://issuer.example.com',
+      given_name: 'Alice',
+      employee_id: 'EMP-001',
+    }
+    const missingBaseCompact = await sdJwtVc.issue(missingBasePayload, {
+      _sd: ['given_name', 'employee_id'],
+    })
+    const missingBaseRes = await sdJwtVc.verify(missingBaseCompact)
+    expect(missingBaseRes.typeMetadataVerification?.missingMandatoryClaims).toEqual([['family_name']])
+
+    // Direct verifyTypeMetadata call with unmerged extending metadata resolves the chain
+    const directVerifyRes = await sdJwtVc.verifyTypeMetadata(compact, extendingMetadata)
+    expect(directVerifyRes).toEqual({
+      extraClaims: [],
+      missingMandatoryClaims: [],
+      invalidNonSelectivelyDisclosableClaims: [],
+      invalidSelectivelyDisclosableClaims: [],
+    })
+  })
 })
