@@ -59,14 +59,14 @@ export class Oauth2ResourceUnauthorizedError extends Oauth2Error {
 
   public toHeaderValue() {
     return encodeWwwAuthenticateHeader(
-      this.wwwAuthenticateHeaders.map((header) => ({
-        scheme: header.scheme,
-        payload: {
-          error: header.error ?? null,
-          error_description: header.error_description ?? null,
-          scope: header.scope ?? null,
-          ...header.additionalPayload,
-        },
+      this.wwwAuthenticateHeaders.map(({ scheme, error, error_description, scope, additionalPayload }) => ({
+        scheme,
+        // RFC 9110 §11.6.1: auth-params always carry a value, so absent parameters are left out
+        payload: Object.fromEntries(
+          Object.entries({ error, error_description, scope, ...additionalPayload }).filter(
+            (entry): entry is [string, string] => entry[1] !== undefined
+          )
+        ),
       }))
     )
   }
