@@ -161,6 +161,12 @@ export interface VerifyKeyAttestationJwtOptions {
   now?: Date
 
   /**
+   * The `key_attestations_required` value of the proof type from the credential configuration in the
+   * credential issuer metadata. If provided, the key attestation is verified against these requirements.
+   */
+  keyAttestationsRequired?: KeyAttestationsRequired
+
+  /**
    * Callbacks required for the key attestation jwt verification
    */
   callbacks: Pick<CallbackContext, 'verifyJwt'>
@@ -186,6 +192,11 @@ export async function verifyKeyAttestationJwt(options: VerifyKeyAttestationJwtOp
     errorMessage: 'Error verifying key attestation jwt',
     expectedNonce: options.expectedNonce,
     now: options.now,
+  })
+
+  verifyKeyAttestationRequirements({
+    keyAttestation: payload,
+    keyAttestationsRequired: options.keyAttestationsRequired,
   })
 
   return {
