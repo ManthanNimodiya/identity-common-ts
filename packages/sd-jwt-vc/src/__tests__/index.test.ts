@@ -230,7 +230,8 @@ describe('Revocation', () => {
       statusVerifier: async (data: string, sig: string) =>
         Crypto.verify(null, Buffer.from(data), statusListPublicKey, Buffer.from(sig, 'base64url')),
       statusValidator: async (status: number) => {
-        if (status !== 0) throw new SDJWTException('Credential has been revoked', { status }, 'STATUS_INVALID')
+        if (status !== 0)
+          throw new SDJWTException('Credential has been revoked', { details: { status }, code: 'STATUS_INVALID' })
       },
     })
     const claims = {
@@ -248,6 +249,32 @@ describe('Revocation', () => {
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.errors.map((e) => e.code)).toEqual(['STATUS_INVALID'])
+    }
+  })
+
+  test.each([
+    [new SDJWTException('Type metadata does not match', { code: 'INVALID_VCT' }), 'INVALID_VCT'],
+    [new Error('Type metadata could not be fetched'), 'VCT_VERIFICATION_FAILED'],
+  ])('safeVerify keeps the code of a failed type metadata check: %s', async (error, expectedCode) => {
+    const { signer, verifier } = createSignerVerifier()
+    const sdjwtWithVct = new SDJwtVcInstance({
+      signer,
+      signAlg: 'EdDSA',
+      verifier,
+      hasher: digest,
+      hashAlg: 'sha-256',
+      saltGenerator: generateSalt,
+      loadTypeMetadataFormat: true,
+      vctFetcher: async () => {
+        throw error
+      },
+    })
+    const encodedSdjwt = await sdjwtWithVct.issue({ iat, iss, vct, firstname: 'John' })
+    const result = await sdjwtWithVct.safeVerify(encodedSdjwt)
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.errors.map((e) => e.code)).toEqual([expectedCode])
     }
   })
 

@@ -114,7 +114,7 @@ export class SDJwtInstance<ExtendedPayload extends SdJwtPayload, T = unknown> {
 
   private async VerifyJwt(jwt: Jwt, options?: T & VerifierOptions) {
     if (!this.userConfig.verifier) {
-      throw new SDJWTException('Verifier not found', undefined, 'VERIFIER_NOT_FOUND')
+      throw new SDJWTException('Verifier not found', { code: 'VERIFIER_NOT_FOUND' })
     }
     return jwt.verify<T>(this.userConfig.verifier, options)
   }

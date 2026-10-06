@@ -107,7 +107,7 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
   private async statusValidator(status: number, { uri, idx }: StatusValidatorContext): Promise<void> {
     if (status !== StatusType.Valid) {
       const details: StatusInvalidErrorDetails = { uri, idx, status }
-      throw new SDJWTException('Status is not valid', details, 'STATUS_INVALID')
+      throw new SDJWTException('Status is not valid', { details, code: 'STATUS_INVALID' })
     }
     return Promise.resolve()
   }
@@ -189,8 +189,10 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
         await this.verifyStatus(result, options)
       } catch (e) {
         const error = ensureError(e)
-        if (error instanceof SDJWTException && error.code === 'STATUS_INVALID') {
-          addError('STATUS_INVALID', error.message, error)
+        // A failure that carries a code (e.g. STATUS_INVALID from the status validator) keeps it;
+        // problems with the status list itself are wrapped without one
+        if (error instanceof SDJWTException && error.code) {
+          addError(error.code, error.message, error)
         } else {
           addError('STATUS_VERIFICATION_FAILED', `Status verification failed: ${error.message}`, error)
         }
@@ -204,7 +206,12 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
             result.typeMetadata = resolvedTypeMetadata
           }
         } catch (e) {
-          addError('VCT_VERIFICATION_FAILED', `VCT verification failed: ${ensureError(e).message}`, e)
+          const error = ensureError(e)
+          if (error instanceof SDJWTException && error.code) {
+            addError(error.code, error.message, error)
+          } else {
+            addError('VCT_VERIFICATION_FAILED', `VCT verification failed: ${error.message}`, error)
+          }
         }
       }
     }
