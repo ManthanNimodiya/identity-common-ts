@@ -418,7 +418,10 @@ export class SDJwtInstance<ExtendedPayload extends SdJwtPayload, T = unknown> {
           }
         } catch (e) {
           const error = ensureError(e)
-          addError('KEY_BINDING_SIGNATURE_INVALID', `Key binding verification failed: ${error.message}`, error)
+          // Time checks (iat, nbf, exp, maximum age) carry their own KEY_BINDING_JWT_* code; any other
+          // failure is reported as an invalid key binding.
+          const code = error instanceof SDJWTException && error.code ? error.code : 'KEY_BINDING_SIGNATURE_INVALID'
+          addError(code, `Key binding verification failed: ${error.message}`, error)
         }
       }
     }

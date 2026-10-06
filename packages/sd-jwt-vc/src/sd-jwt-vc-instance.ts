@@ -5,11 +5,13 @@ import {
   SLException,
   type StatusListJWTHeaderParameters,
   type StatusListJWTPayload,
+  StatusType,
   verifyStatusListJwtClaims,
 } from '@owf/token-status-list'
 import {
   type DisclosureFrame,
   ensureError,
+  getJwtTimeValidationOptions,
   Jwt,
   type SafeVerifyResult,
   SDJWTException,
@@ -20,7 +22,14 @@ import {
   type VerifierOptions,
 } from '@sd-jwt/core'
 import z from 'zod'
-import type { SDJWTVCConfig, StatusListFetcher, StatusValidator } from './sd-jwt-vc-config'
+import type {
+  SDJWTVCConfig,
+  StatusInvalidErrorDetails,
+  StatusListFetcher,
+  StatusListVerificationErrorDetails,
+  StatusValidator,
+  StatusValidatorContext,
+} from './sd-jwt-vc-config'
 import type { SdJwtVcPayload } from './sd-jwt-vc-payload'
 import {
   type Claim,
@@ -92,10 +101,14 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
   /**
    * Validates the status, throws an error if the status is not 0.
    * @param status
+   * @param context where the status was read from
    * @returns
    */
-  private async statusValidator(status: number): Promise<void> {
-    if (status !== 0) throw new SDJWTException('Status is not valid', undefined, 'STATUS_INVALID')
+  private async statusValidator(status: number, { uri, idx }: StatusValidatorContext): Promise<void> {
+    if (status !== StatusType.Valid) {
+      const details: StatusInvalidErrorDetails = { uri, idx, status }
+      throw new SDJWTException('Status is not valid', details, 'STATUS_INVALID')
+    }
     return Promise.resolve()
   }
 
@@ -534,10 +547,11 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
     if (result.payload.status) {
       //checks if a status field is present in the payload based on https://www.ietf.org/archive/id/draft-ietf-oauth-status-list-02.html
       if (result.payload.status.status_list) {
+        const { uri, idx } = result.payload.status.status_list
         // fetch the status list from the uri
         const fetcher: StatusListFetcher = this.userConfig.statusListFetcher ?? this.statusListFetcher.bind(this)
         // fetch the status list from the uri
-        const statusListJWT = await fetcher(result.payload.status.status_list.uri)
+        const statusListJWT = await fetcher(uri)
 
         const slJWT = Jwt.fromEncode<StatusListJWTHeaderParameters, StatusListJWTPayload>(statusListJWT)
         // check if the status list has a valid signature. Falls back to the verifier of the SD-JWT-VC.
@@ -545,24 +559,30 @@ export class SDJwtVcInstance extends SDJwtInstance<SdJwtVcPayload> {
         if (!statusListVerifier) {
           throw new SDJWTException('Verifier not found for status list JWT')
         }
-        await slJWT.verify(statusListVerifier, options).catch((err: SLException) => {
-          throw new SLException(`Status List JWT verification failed: ${err.message}`, err.details)
+        await slJWT.verify(statusListVerifier, getJwtTimeValidationOptions(options)).catch((err: unknown) => {
+          const details: StatusListVerificationErrorDetails = { uri }
+          // The original exception stays reachable as `cause`, e.g. a JwtTimeClaimException with the
+          // exp the status list token was rejected for.
+          throw Object.assign(
+            new SLException(`Status List JWT verification failed: ${ensureError(err).message}`, details),
+            { cause: err }
+          )
         })
 
         // check the claims required for a Status List Token, e.g. that `sub` matches the referenced uri
         verifyStatusListJwtClaims(slJWT.payload as StatusListJWTPayload, {
-          uri: result.payload.status.status_list.uri,
+          uri,
           now: options?.currentDate !== undefined ? secondsToDate(options.currentDate) : undefined,
           skewSeconds: options?.skewSeconds,
         })
 
         // get the status list from the status list JWT
         const statusList = getListFromStatusListJWT(statusListJWT)
-        const status = statusList.getStatus(result.payload.status.status_list.idx)
+        const status = statusList.getStatus(idx)
 
         // validate the status
         const statusValidator: StatusValidator = this.userConfig.statusValidator ?? this.statusValidator.bind(this)
-        await statusValidator(status)
+        await statusValidator(status, { uri, idx })
       }
     }
   }

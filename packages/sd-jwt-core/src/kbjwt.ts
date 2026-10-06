@@ -1,5 +1,6 @@
 import { nowInSeconds } from '@owf/identity-common'
-import { Jwt, type VerifierOptions } from './jwt'
+import { getJwtTimeValidationOptions, Jwt, type VerifierOptions, validateJwtPayload } from './jwt'
+import { timeClaimException } from './time-claim-error'
 import { KB_JWT_TYP, type KbVerifier, type kbHeader, type kbPayload } from './types'
 import { SDJWTException } from './utils'
 
@@ -14,8 +15,9 @@ export class KBJwt<Header extends kbHeader = kbHeader, Payload extends kbPayload
     payload: Record<string, unknown>
     nonce: string
     /**
-     * Options forwarded to the common JWT verification, e.g. currentDate and
-     * skewSeconds used to validate the iat, nbf and exp claims.
+     * Full verification options. The SD-JWT verifier validates issuer-signed
+     * claims and the issuer algorithm before calling verifyKB; key-binding-specific
+     * constraints are checked here. Only time-validation options reach Jwt.verify.
      */
     options?: VerifierOptions
   }) {
@@ -54,15 +56,25 @@ export class KBJwt<Header extends kbHeader = kbHeader, Payload extends kbPayload
       const currentDate = values.options.currentDate ?? nowInSeconds()
       const skew = values.options.skewSeconds ?? 0
       if (this.payload.iat + values.options.keyBindingMaxAgeSeconds + skew < currentDate) {
-        throw new SDJWTException('Verify Error: Key Binding JWT is too old')
+        throw timeClaimException('key-binding-jwt', 'tooOld', {
+          claim: 'iat',
+          value: this.payload.iat,
+          currentDate,
+          skewSeconds: skew,
+          maxAgeSeconds: values.options.keyBindingMaxAgeSeconds,
+        })
       }
     }
 
-    // Delegate signature verification and common JWT claim validation
-    // (iat, nbf, exp) to the shared Jwt.verify implementation. The kbVerifier
-    // needs the kb+jwt payload (e.g. the holder's cnf key), so we wrap it to
-    // forward values.payload instead of the base verifier's options argument.
-    await this.verify((data, sig) => values.verifier(data, sig, values.payload), values.options)
+    // Only the time claims (iat, nbf, exp) are checked: issuer-signed constraints
+    // such as the expected issuer or vct do not apply to the KB-JWT. They are
+    // checked here instead of in Jwt.verify, so failures name the Key Binding JWT
+    // and carry the KEY_BINDING_JWT_* codes.
+    validateJwtPayload(this.payload, getJwtTimeValidationOptions(values.options), 'key-binding-jwt')
+
+    // Jwt.verify checks the signature. The wrapper passes the credential payload
+    // (including the holder's cnf key) to kbVerifier instead of verifier options.
+    await this.verify((data, sig) => values.verifier(data, sig, values.payload), { skipJwtClaimValidation: true })
 
     return { payload: this.payload, header: this.header }
   }

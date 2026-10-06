@@ -1,7 +1,10 @@
 import { nowInSeconds } from '@owf/identity-common'
 import { decodeJwt } from './decode'
+import { type JwtRole, timeClaimException } from './time-claim-error'
 import type { Base64urlString, Signer, Verifier } from './types'
 import { base64urlEncode, SDJWTException } from './utils'
+
+export type { JwtRole } from './time-claim-error'
 
 export type JwtData<Header extends Record<string, unknown>, Payload extends Record<string, unknown>> = {
   header?: Header
@@ -94,6 +97,11 @@ export type VerifierOptions = {
   [key: string]: unknown
 }
 
+export const getJwtTimeValidationOptions = (
+  options?: VerifierOptions
+): Pick<VerifierOptions, 'currentDate' | 'skewSeconds'> | undefined =>
+  options ? { currentDate: options.currentDate, skewSeconds: options.skewSeconds } : undefined
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
@@ -157,6 +165,7 @@ const validateVct = (payload: Record<string, unknown>, expectedVct: string | str
 }
 
 const validateMaxAge = (
+  role: JwtRole,
   iat: number | undefined,
   currentDate: number,
   skew: number,
@@ -169,11 +178,28 @@ const validateMaxAge = (
   }
 
   if (iat + maxAgeSeconds + skew < currentDate) {
-    throw new SDJWTException('Verify Error: JWT is too old', undefined, 'JWT_TOO_OLD')
+    throw timeClaimException(role, 'tooOld', {
+      claim: 'iat',
+      value: iat,
+      currentDate,
+      skewSeconds: skew,
+      maxAgeSeconds,
+    })
   }
 }
 
-export const validateJwtPayload = (payload: Record<string, unknown> | undefined, options?: VerifierOptions) => {
+/**
+ * Validate the registered claims of a JWT payload: the `iat`, `nbf` and `exp` times and, when the
+ * options ask for them, the maximum age, audience, issuer, subject and vct.
+ *
+ * @param role - the JWT the payload belongs to, used to name it in error messages and to pick the
+ * error codes of failed time checks. Defaults to an issuer-signed JWT.
+ */
+export const validateJwtPayload = (
+  payload: Record<string, unknown> | undefined,
+  options?: VerifierOptions,
+  role: JwtRole = 'jwt'
+) => {
   if (!payload) {
     throw new SDJWTException('Verify Error: JWT payload is missing', undefined, 'INVALID_SD_JWT')
   }
@@ -185,18 +211,18 @@ export const validateJwtPayload = (payload: Record<string, unknown> | undefined,
   const exp = validateNumericDate(payload, 'exp')
 
   if (iat !== undefined && iat - skew > currentDate) {
-    throw new SDJWTException('Verify Error: JWT is not yet valid', undefined, 'JWT_NOT_YET_VALID')
+    throw timeClaimException(role, 'notYetValid', { claim: 'iat', value: iat, currentDate, skewSeconds: skew })
   }
 
   if (nbf !== undefined && nbf - skew > currentDate) {
-    throw new SDJWTException('Verify Error: JWT is not yet valid', undefined, 'JWT_NOT_YET_VALID')
+    throw timeClaimException(role, 'notYetValid', { claim: 'nbf', value: nbf, currentDate, skewSeconds: skew })
   }
 
   if (exp !== undefined && exp + skew <= currentDate) {
-    throw new SDJWTException('Verify Error: JWT is expired', undefined, 'JWT_EXPIRED')
+    throw timeClaimException(role, 'expired', { claim: 'exp', value: exp, currentDate, skewSeconds: skew })
   }
 
-  validateMaxAge(iat, currentDate, skew, options?.maxAgeSeconds)
+  validateMaxAge(role, iat, currentDate, skew, options?.maxAgeSeconds)
   validateAudience(payload, options?.expectedAudience)
   validateIssuer(payload, options?.expectedIssuer)
   validateSubject(payload, options?.expectedSubject)

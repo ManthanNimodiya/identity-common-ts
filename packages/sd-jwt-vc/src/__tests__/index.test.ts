@@ -1,9 +1,21 @@
 import Crypto from 'node:crypto'
 import { hasher as digest, generateSalt } from '@owf/crypto'
-import { createHeaderAndPayload, StatusList, type StatusListJWTHeaderParameters } from '@owf/token-status-list'
-import { type DisclosureFrame, type JwtPayload, SDJWTException, type Signer, type Verifier } from '@sd-jwt/core'
+import {
+  createHeaderAndPayload,
+  SLException,
+  StatusList,
+  type StatusListJWTHeaderParameters,
+} from '@owf/token-status-list'
+import {
+  type DisclosureFrame,
+  type JwtPayload,
+  JwtTimeClaimException,
+  SDJWTException,
+  type Signer,
+  type Verifier,
+} from '@sd-jwt/core'
 import { SignJWT } from 'jose'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { SDJwtVcInstance } from '..'
 import type { SdJwtVcPayload } from '../sd-jwt-vc-payload'
 
@@ -111,6 +123,33 @@ describe('Revocation', () => {
     expect(result).toBeDefined()
   })
 
+  test.each([
+    ['issuer', { expectedIssuer: iss }],
+    ['subject', { expectedSubject: 'alice' }],
+    ['audience', { expectedAudience: 'credential-audience' }],
+    ['VCT', { expectedVct: vct }],
+    [
+      'combined options',
+      {
+        expectedIssuer: iss,
+        expectedSubject: 'alice',
+        expectedAudience: 'credential-audience',
+        expectedVct: vct,
+      },
+    ],
+  ])('applies expected %s only to the credential, not the status list token', async (_name, expected) => {
+    const encoded = await sdjwt.issue({
+      iat,
+      iss,
+      sub: 'alice',
+      aud: 'credential-audience',
+      vct,
+      status: { status_list: { uri: 'https://example.com/status-list', idx: 0 } },
+    })
+
+    await expect(sdjwt.verify(encoded, expected)).resolves.toBeDefined()
+  })
+
   test('Test with a revoked credential', async () => {
     const claims = {
       firstname: 'John',
@@ -124,7 +163,40 @@ describe('Revocation', () => {
     const expectedPayload: SdJwtVcPayload = { iat, iss, vct, ...claims }
     const encodedSdjwt = await sdjwt.issue(expectedPayload)
     const result = sdjwt.verify(encodedSdjwt)
-    await expect(result).rejects.toThrowError('Status is not valid')
+    await expect(result).rejects.toMatchObject({
+      message: 'Status is not valid',
+      code: 'STATUS_INVALID',
+      details: { uri: 'https://example.com/status-list', idx: 1, status: 1 },
+    })
+
+    const safeResult = await sdjwt.safeVerify(encodedSdjwt)
+    expect(safeResult.errors?.map((e) => e.code)).toEqual(['STATUS_INVALID'])
+  })
+
+  test('Test with a custom status validator', async () => {
+    const statusValidator = vi.fn(async () => {})
+    const { signer, verifier } = createSignerVerifier()
+    const sdjwtWithValidator = new SDJwtVcInstance({
+      signer,
+      signAlg: 'EdDSA',
+      verifier,
+      hasher: digest,
+      hashAlg: 'sha-256',
+      saltGenerator: generateSalt,
+      statusListFetcher: () => Promise.resolve(statusListJWT),
+      statusVerifier: async (data: string, sig: string) =>
+        Crypto.verify(null, Buffer.from(data), statusListPublicKey, Buffer.from(sig, 'base64url')),
+      statusValidator,
+    })
+
+    const expectedPayload: SdJwtVcPayload = {
+      iat,
+      iss,
+      vct,
+      status: { status_list: { uri: 'https://example.com/status-list', idx: 6 } },
+    }
+    await sdjwtWithValidator.verify(await sdjwtWithValidator.issue(expectedPayload))
+    expect(statusValidator).toHaveBeenCalledWith(1, { uri: 'https://example.com/status-list', idx: 6 })
   })
 
   test('safeVerify reports a revoked credential as STATUS_INVALID', async () => {
@@ -252,7 +324,48 @@ describe('Revocation', () => {
   })
 
   test('test with an expired status list', async () => {
-    //TODO: needs to be implemented
+    const { header, payload } = createHeaderAndPayload(
+      new StatusList([0, 0], 1),
+      { iss: 'https://example.com', sub: 'https://example.com/status-list', iat: 1000, exp: 2000 },
+      { alg: 'EdDSA', typ: 'statuslist+jwt' }
+    )
+    const expiredStatusListJWT = await new SignJWT(payload).setProtectedHeader(header).sign(statusListPrivateKey)
+
+    const { signer, verifier } = createSignerVerifier()
+    const sdjwtWithExpiredList = new SDJwtVcInstance({
+      signer,
+      signAlg: 'EdDSA',
+      verifier,
+      hasher: digest,
+      hashAlg: 'sha-256',
+      saltGenerator: generateSalt,
+      statusListFetcher: () => Promise.resolve(expiredStatusListJWT),
+      statusVerifier: async (data: string, sig: string) =>
+        Crypto.verify(null, Buffer.from(data), statusListPublicKey, Buffer.from(sig, 'base64url')),
+    })
+
+    const expectedPayload: SdJwtVcPayload = {
+      iat: 1000,
+      iss,
+      vct,
+      status: { status_list: { uri: 'https://example.com/status-list', idx: 0 } },
+    }
+    const encodedSdjwt = await sdjwtWithExpiredList.issue(expectedPayload)
+
+    const error = await sdjwtWithExpiredList.verify(encodedSdjwt, { currentDate: 5000 }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SLException)
+    expect(error).toMatchObject({
+      message: 'Status List JWT verification failed: Verify Error: JWT is expired',
+      details: { uri: 'https://example.com/status-list' },
+    })
+
+    // the rejected claim is on the original exception
+    const cause = (error as { cause?: unknown }).cause
+    expect(cause).toBeInstanceOf(JwtTimeClaimException)
+    expect(cause).toMatchObject({
+      code: 'JWT_EXPIRED',
+      details: { claim: 'exp', value: 2000, currentDate: 5000, skewSeconds: 0 },
+    })
   })
 })
 
