@@ -99,13 +99,12 @@ describe('credential request parsing', () => {
     ).toThrow("the request does not contain 'credential_response_encryption'")
   })
 
-  test('parseDeferredCredentialRequest checks the encryption only when the issuer metadata is passed', () => {
+  test('parseDeferredCredentialRequest checks the encryption against the issuer metadata', () => {
     const deferredCredentialRequest = {
       transaction_id: 'tx',
       credential_response_encryption: { jwk, enc: 'A128CBC-HS256' },
     }
 
-    expect(() => parseDeferredCredentialRequest({ deferredCredentialRequest })).not.toThrow()
     expect(() => parseDeferredCredentialRequest({ deferredCredentialRequest, issuerMetadata })).toThrow(
       "Credential response encryption 'enc' must be one of 'A128GCM', 'A256GCM'"
     )

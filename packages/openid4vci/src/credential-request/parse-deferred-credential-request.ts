@@ -7,10 +7,10 @@ export interface ParseDeferredCredentialRequestOptions {
   deferredCredentialRequest: Record<string, unknown>
 
   /**
-   * When provided, the `credential_response_encryption` of the request is checked against the
+   * The `credential_response_encryption` of the request is checked against the
    * `credential_response_encryption` of the issuer metadata.
    */
-  issuerMetadata?: IssuerMetadataResult
+  issuerMetadata: IssuerMetadataResult
 }
 
 export interface ParseDeferredCredentialRequestReturn {
@@ -30,12 +30,10 @@ export function parseDeferredCredentialRequest(
     'Error validating credential request'
   )
 
-  if (options.issuerMetadata) {
-    verifyCredentialResponseEncryption(
-      deferredCredentialRequest.credential_response_encryption,
-      options.issuerMetadata.credentialIssuer
-    )
-  }
+  verifyCredentialResponseEncryption(
+    deferredCredentialRequest.credential_response_encryption,
+    options.issuerMetadata.credentialIssuer
+  )
 
   return {
     deferredCredentialRequest,
