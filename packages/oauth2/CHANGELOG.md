@@ -1,5 +1,43 @@
 # @openid4vc/oauth2
 
+## 0.7.0
+
+### Minor Changes
+
+- 222ed67: Unify the clock skew option name to `allowedSkewInSeconds` and add a server-level default.
+  
+  - **Breaking:** the DPoP `allowedClockSkewSeconds` option is renamed to `allowedSkewInSeconds`. This applies to `verifyDpopJwt` and to the `dpop` options of `verifyPushedAuthorizationRequest`, `verifyAuthorizationChallengeRequest`, the `verify*AccessTokenRequest` methods and `verifyResourceRequest`.
+  - Add `allowedSkewInSeconds` to `Oauth2AuthorizationServer` as the default allowed clock skew for DPoP and client attestation verification in `verifyPushedAuthorizationRequest`, `verifyAuthorizationChallengeRequest`, the `verify*AccessTokenRequest` methods, `verifyDpopJwt` and `verifyClientAttestation`. A per-call `allowedSkewInSeconds` in the DPoP or client attestation options overrides the server default, including `0`.
+  - The `verify*AccessTokenRequest` methods now pass `now` to DPoP proof verification, so the DPoP `iat` checks use the provided time instead of the current time.
+
+### Patch Changes
+
+- 1beaa04: Normalize the `htu` claim of a DPoP proof the same way as the request URL before comparing them, so query and fragment are ignored (RFC 9449 §4.3) and an uppercase host or explicit default port no longer cause a mismatch (RFC 3986 §6.2.2, §6.2.3). `zHttpsUrl` now accepts the URL scheme case-insensitively (RFC 3986 §3.1).
+- c0107e4: Allow configuring clock skew for client attestation verification on the authorization server.
+  
+  - Add optional `allowedSkewInSeconds` (default `0`) to the `clientAttestation` options of `verifyPushedAuthorizationRequest`, `verifyAuthorizationChallengeRequest` and the `verify*AccessTokenRequest` methods. It is applied to the `nbf` and `exp` checks of both the Client Attestation JWT and the Client Attestation PoP JWT, including the DPoP-bound `attest_jwt_client_auth_dpop` method.
+  - `verifyClientAttestationJwt` now honours its `allowedSkewInSeconds` option, which was previously ignored.
+- Updated dependencies [1beaa04]
+- Updated dependencies [5d2179b]
+  - @openid4vc/utils@0.7.0
+
+## 0.6.0
+
+### Minor Changes
+
+- 019f316: BREAKING: `parseJarRequest` and `validateJarRequestParams` no longer allow a `request_uri` by default. The `allowRequestUri` option now defaults to `false`, so a JAR request passed by reference is rejected with an `invalid_request_object` error (and `parseJarRequest` won't fetch it) unless you explicitly pass `allowRequestUri: true`.
+
+### Patch Changes
+
+- 0d30e2d: Match the `Authorization` header authentication scheme case-insensitively in `verifyResourceRequest`, as required by RFC 9110 §11.1. A request using e.g. `dpOp` or `bearer` is now accepted, and the scheme is resolved to its canonical form (`DPoP` / `Bearer`) for the rest of the verification.
+- f3efa25: Report a client attestation or client attestation PoP JWT that fails schema validation (e.g. a missing `sub`, `exp`, `cnf.jwk` or `jti` claim) as `invalid_client` with status `401`, consistent with signature and expiry failures. Previously the `ValidationError` was reported as a `500` `server_error` by `verifyClientAttestation`, and was not mapped to an OAuth2 error at all for the `attest_jwt_client_auth_dpop` method.
+- 83123e8: Respond with `invalid_grant` instead of `invalid_request` when the `code_verifier` is missing from an access token request for an authorization code bound to a PKCE code challenge, as required by RFC 7636 §4.6.
+- 2a28c82: Reject a pushed authorization request or interactive authorization request containing a `request_uri` parameter with an `invalid_request` error, instead of fetching the `request_uri`.
+- 83123e8: Reject an access token request with `invalid_grant` when it contains a `code_verifier` but no `pkce` options are passed to the verify function (the grant is not bound to a code challenge). This prevents a PKCE downgrade attack as described in RFC 9700 §4.8.2, where a code obtained without PKCE is injected into the flow of a client that does use PKCE.
+- 18f267c: Omit absent `error`, `error_description` and `scope` parameters from the `WWW-Authenticate` header produced by `Oauth2ResourceUnauthorizedError.toHeaderValue()`. Previously they were emitted as bare parameter names (e.g. `Bearer error, error_description, scope`), which is not a valid challenge per RFC 9110 §11.6.1. `encodeWwwAuthenticateHeader` now skips payload entries with an `undefined` value, while `null` values are still encoded as bare parameter names.
+- Updated dependencies [18f267c]
+  - @openid4vc/utils@0.6.0
+
 ## 0.5.6
 
 ### Patch Changes

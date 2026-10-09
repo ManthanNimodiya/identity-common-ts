@@ -1,5 +1,18 @@
 # @openid4vc/utils
 
+## 0.7.0
+
+### Patch Changes
+
+- 1beaa04: Normalize the `htu` claim of a DPoP proof the same way as the request URL before comparing them, so query and fragment are ignored (RFC 9449 §4.3) and an uppercase host or explicit default port no longer cause a mismatch (RFC 3986 §6.2.2, §6.2.3). `zHttpsUrl` now accepts the URL scheme case-insensitively (RFC 3986 §3.1).
+- 5d2179b: Accept data urls of the form "data:image/svg+xml;...". Previously usage of data urls with media type svg+xml would lead to errors when validating metadata.
+
+## 0.6.0
+
+### Patch Changes
+
+- 18f267c: Omit absent `error`, `error_description` and `scope` parameters from the `WWW-Authenticate` header produced by `Oauth2ResourceUnauthorizedError.toHeaderValue()`. Previously they were emitted as bare parameter names (e.g. `Bearer error, error_description, scope`), which is not a valid challenge per RFC 9110 §11.6.1. `encodeWwwAuthenticateHeader` now skips payload entries with an `undefined` value, while `null` values are still encoded as bare parameter names.
+
 ## 0.5.6
 
 ### Patch Changes

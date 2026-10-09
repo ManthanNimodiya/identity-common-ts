@@ -127,7 +127,7 @@ export interface DpopVerificationOptions {
    *
    * @default 0
    */
-  allowedClockSkewSeconds?: number
+  allowedSkewInSeconds?: number
 
   /**
    * Callback to enforce one-time usage of the DPoP proof `jti`.
@@ -217,8 +217,9 @@ export async function verifyDpopJwt(options: VerifyDpopJwtOptions) {
       )
     }
 
+    // RFC 9449 §4.3: query and fragment are ignored, and both sides are normalized (RFC 3986 §6.2.2, §6.2.3)
     const expectedHtu = htuFromRequestUrl(options.request.url)
-    if (expectedHtu !== payload.htu) {
+    if (expectedHtu !== htuFromRequestUrl(payload.htu)) {
       throw new Oauth2Error(`Dpop jwt contains htu value '${payload.htu}', but expected htu value '${expectedHtu}'.`)
     }
 
@@ -231,7 +232,7 @@ export async function verifyDpopJwt(options: VerifyDpopJwtOptions) {
       }
 
       const nowInSeconds = dateToSeconds(now)
-      const allowedSkew = options.allowedClockSkewSeconds ?? 0
+      const allowedSkew = options.allowedSkewInSeconds ?? 0
       const proofAgeInSeconds = nowInSeconds - payload.iat
 
       if (payload.iat > nowInSeconds + allowedSkew) {
