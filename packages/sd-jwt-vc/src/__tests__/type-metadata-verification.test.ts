@@ -118,7 +118,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       signAlg: 'EdDSA',
     })
 
-    // Omits given_name which is mandatory in pidTypeMetadata
     const payload = {
       vct: 'http://example.com/pid',
       iss: 'https://issuer.example.com',
@@ -186,7 +185,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const result = await sdJwtVc.verifyTypeMetadata(compact, metadata)
 
     expect(result.missingMandatoryClaims).toEqual([['document_number']])
-    // The address may have been withheld, so the country can't be missing
     expect(result.undisclosedMandatoryClaims).toEqual([['address', 'country']])
   })
 
@@ -199,7 +197,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       signAlg: 'EdDSA',
     })
 
-    // given_name is included in plain JWT payload, but metadata specifies sd: "always"
     const payload = {
       vct: 'http://example.com/pid',
       iss: 'https://issuer.example.com',
@@ -227,7 +224,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       signAlg: 'EdDSA',
     })
 
-    // sub is disclosed via _sd, but metadata specifies sd: "never"
     const payload = {
       vct: 'http://example.com/pid',
       iss: 'https://issuer.example.com',
@@ -320,7 +316,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const disclosures = await createHashMapping(sdjwt.disclosures ?? [], { hasher: digest, alg: 'sha-256' })
 
     const res = verifyClaimsAgainstTypeMetadata(metadata, sdjwt.jwt?.payload ?? {}, disclosures)
-    // `vct` and `iss` are registered claims, `user` and `user.roles` are ancestors of declared claims
     expect(res).toEqual({
       extraClaims: [],
       missingMandatoryClaims: [],
@@ -396,7 +391,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const presentedResult = await sdJwtVc.verifyTypeMetadata(presentation, metadata)
     expect(presentedResult.invalidNonSelectivelyDisclosableClaims).toEqual([])
 
-    // 'US' is a plain claim, while 'DE' is selectively disclosable
     const mixedCompact = await sdJwtVc.issue(payload, { nat: { _sd: [1] } })
     const mixedResult = await sdJwtVc.verifyTypeMetadata(mixedCompact, metadata)
     expect(mixedResult.invalidNonSelectivelyDisclosableClaims).toEqual([
@@ -508,7 +502,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       { _sd: ['name'] }
     )
     const other = await sdJwtVc.issue({ vct: 'urn:x', iss: 'https://issuer.example.com', name: 'b' }, { _sd: ['name'] })
-    // Add a disclosure that the payload does not reference
     const [, otherDisclosure] = other.split('~')
     const tampered = compact.replace(/~$/, `~${otherDisclosure}~`)
 
@@ -559,7 +552,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       },
     })
 
-    // Valid credential with claims from both base and extending metadata
     const payload = {
       vct: 'http://example.com/employee-credential',
       iss: 'https://issuer.example.com',
@@ -583,7 +575,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       invalidSelectivelyDisclosableClaims: [],
     })
 
-    // Missing mandatory claim from base metadata (family_name)
     const missingBasePayload = {
       vct: 'http://example.com/employee-credential',
       iss: 'https://issuer.example.com',
@@ -596,7 +587,6 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const missingBaseRes = await sdJwtVc.verify(missingBaseCompact)
     expect(missingBaseRes.typeMetadataVerification?.undisclosedMandatoryClaims).toEqual([['family_name']])
 
-    // Direct verifyTypeMetadata call with unmerged extending metadata resolves the chain
     const directVerifyRes = await sdJwtVc.verifyTypeMetadata(compact, extendingMetadata)
     expect(directVerifyRes).toEqual({
       extraClaims: [],
