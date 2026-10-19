@@ -218,7 +218,6 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
           const resolvedTypeMetadata = await this.fetchVct(result)
           if (result) {
             result.typeMetadata = resolvedTypeMetadata
-            // Skip the claim check when the SD-JWT itself is invalid, the error is already reported
             if (resolvedTypeMetadata && baseResult.success) {
               result.typeMetadataVerification = await this.verifyTypeMetadata(encodedSDJwt, resolvedTypeMetadata)
             }
@@ -257,15 +256,6 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
     }
   }
 
-  /**
-   * Verifies the presented claims of an SD-JWT VC against a Type Metadata format object.
-   * Checks for extra claims, missing mandatory claims, and selective disclosure constraints (`sd: "always"`, `sd: "never"`).
-   * If `typeMetadata` is omitted, attempts to fetch and resolve it automatically via `getVct`.
-   *
-   * @param encodedSDJwt The encoded SD-JWT VC string
-   * @param typeMetadata Optional type metadata object (ResolvedTypeMetadata or TypeMetadataFormat)
-   * @returns TypeMetadataVerificationResult
-   */
   async verifyTypeMetadata(
     encodedSDJwt: string,
     typeMetadata?: ResolvedTypeMetadata | TypeMetadataFormat
@@ -301,7 +291,6 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
 
     const { _sd_alg, payload } = getSDAlgAndPayload(sdjwt.jwt.payload)
     const disclosures = await createHashMapping(sdjwt.disclosures ?? [], { hasher, alg: _sd_alg })
-    // Validates the disclosures against the payload
     unpackObj(payload, disclosures)
 
     return verifyClaimsAgainstTypeMetadata(resolvedMetadata, payload, disclosures)

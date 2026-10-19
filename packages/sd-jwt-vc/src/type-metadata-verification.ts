@@ -2,46 +2,25 @@ import { type Disclosure, SD_DIGEST, SD_LIST_KEY } from '@sd-jwt/core'
 import type { ClaimPath, ResolvedTypeMetadata, TypeMetadataFormat } from './sd-jwt-vc-type-metadata-format'
 
 export type TypeMetadataVerificationResult = {
-  /**
-   * Claims present in the SD-JWT VC that are not declared in the type metadata. Only the topmost undeclared path is
-   * reported. Registered SD-JWT VC claims (e.g. `iss`, `cnf`, `status`) are ignored unless the type metadata declares them.
-   */
   extraClaims: ClaimPath[]
-  /** Mandatory claims that are missing, while they must not be selectively disclosable (`sd: "never"`). */
   missingMandatoryClaims: ClaimPath[]
-  /** Mandatory claims that are missing, but may be selectively disclosable, so they may just not have been disclosed. */
   undisclosedMandatoryClaims: ClaimPath[]
-  /** Claims present in the SD-JWT VC as non-selectively-disclosable (plain JWT claims) that should be selectively disclosable according to type metadata (`sd: "always"`). */
   invalidNonSelectivelyDisclosableClaims: ClaimPath[]
-  /** Claims present in the SD-JWT VC as selectively disclosable (via disclosures) that should not be selectively disclosable according to type metadata (`sd: "never"`). */
   invalidSelectivelyDisclosableClaims: ClaimPath[]
 }
 
-/**
- * Registered SD-JWT VC claims, which are not reported as extra claims unless the type metadata declares them.
- */
 const REGISTERED_CLAIMS = ['iss', 'nbf', 'exp', 'iat', 'sub', 'cnf', 'vct', 'vct#integrity', 'status']
 
-/**
- * A claim in the SD-JWT VC. Array elements use their index in the issued array.
- */
 type PresentClaim = {
   path: Array<string | number>
   isSd: boolean
 }
 
-/**
- * Compares two ClaimPath objects for equality.
- */
 export function claimPathsEqual(path1: ClaimPath, path2: ClaimPath): boolean {
   if (path1.length !== path2.length) return false
   return path1.every((seg, idx) => seg === path2[idx])
 }
 
-/**
- * Checks if the first `length` segments of the claim path and the present claim path match, where `null` matches any
- * array element.
- */
 function segmentsMatch(claimPath: ClaimPath, presentPath: Array<string | number>, length: number): boolean {
   for (let i = 0; i < length; i++) {
     const seg = claimPath[i]
@@ -64,10 +43,6 @@ function isArrayElementDigest(value: unknown): value is { [SD_LIST_KEY]: string 
   )
 }
 
-/**
- * Collects the claims present in the packed SD-JWT payload. An object property is selectively disclosable if its
- * digest is in the object's `_sd`, and an array element if it is a `{ "...": digest }` placeholder.
- */
 function collectPresentClaims(payload: Record<string, unknown>, disclosures: Record<string, Disclosure>) {
   const claims: PresentClaim[] = []
 
@@ -78,7 +53,6 @@ function collectPresentClaims(payload: Record<string, unknown>, disclosures: Rec
       node.forEach((element, index) => {
         if (isArrayElementDigest(element)) {
           const disclosure = disclosures[element[SD_LIST_KEY]]
-          // Withheld element or decoy
           if (!disclosure) return
           claims.push({ path: [...path, index], isSd: true })
           visit(disclosure.value, [...path, index])
@@ -100,7 +74,6 @@ function collectPresentClaims(payload: Record<string, unknown>, disclosures: Rec
     const digests = Array.isArray(record[SD_DIGEST]) ? record[SD_DIGEST] : []
     for (const digest of digests) {
       const disclosure = typeof digest === 'string' ? disclosures[digest] : undefined
-      // Withheld claim or decoy
       if (!disclosure || typeof disclosure.key !== 'string') continue
       claims.push({ path: [...path, disclosure.key], isSd: true })
       visit(disclosure.value, [...path, disclosure.key])
@@ -123,13 +96,6 @@ function createClaimPathSet() {
   }
 }
 
-/**
- * Core function to verify present claims against Type Metadata Format.
- *
- * @param typeMetadata The resolved or unmerged type metadata format
- * @param payload The (packed) payload of the SD-JWT VC
- * @param disclosures Map of digests to the disclosures of the SD-JWT VC
- */
 export function verifyClaimsAgainstTypeMetadata(
   typeMetadata: ResolvedTypeMetadata | TypeMetadataFormat,
   payload: Record<string, unknown>,
@@ -160,9 +126,7 @@ export function verifyClaimsAgainstTypeMetadata(
 
     return metadataClaims.some(
       (mc) =>
-        // Ancestors of a declared path
         (path.length < mc.path.length && segmentsMatch(mc.path, path, path.length)) ||
-        // Descendants of a declared path without declared children
         (path.length > mc.path.length && segmentsMatch(mc.path, path, mc.path.length) && !hasDeclaredChildren(mc.path))
     )
   }
@@ -188,8 +152,6 @@ export function verifyClaimsAgainstTypeMetadata(
   for (const metadataClaim of metadataClaims) {
     if (!metadataClaim.mandatory || isPresent(metadataClaim.path)) continue
 
-    // A claim that must not be selectively disclosable is only missing when its parent is present,
-    // otherwise the holder may have withheld the parent
     const parentPath = metadataClaim.path.slice(0, -1)
     if (metadataClaim.sd === 'never' && (parentPath.length === 0 || isPresent(parentPath))) {
       missingMandatoryClaims.add(metadataClaim.path)
@@ -198,7 +160,6 @@ export function verifyClaimsAgainstTypeMetadata(
     }
   }
 
-  // Only report the topmost undeclared path
   const extraClaimPaths = extraClaims.values()
   return {
     extraClaims: extraClaimPaths.filter(
