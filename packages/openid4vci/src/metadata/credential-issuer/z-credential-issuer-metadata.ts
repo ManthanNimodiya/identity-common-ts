@@ -1,6 +1,7 @@
 import {
   fullySpecifiedCoseAlgorithmArrayToJwaSignatureAlgorithmArray,
   jwaSignatureAlgorithmArrayToFullySpecifiedCoseAlgorithmArray,
+  zJwkSet,
 } from '@openid4vc/oauth2'
 import { type InferOutputUnion, type Simplify, zDataUrl, zHttpsUrl } from '@openid4vc/utils'
 import z from 'zod'
@@ -152,6 +153,15 @@ export const zCredentialIssuerMetadataDraft14Draft15V1 = z
     credential_response_encryption: z
       .object({
         alg_values_supported: z.array(z.string()),
+        enc_values_supported: z.array(z.string()),
+        zip_values_supported: z.array(z.string()).optional(),
+        encryption_required: z.boolean(),
+      })
+      .loose()
+      .optional(),
+    credential_request_encryption: z
+      .object({
+        jwks: zJwkSet,
         enc_values_supported: z.array(z.string()),
         zip_values_supported: z.array(z.string()).optional(),
         encryption_required: z.boolean(),

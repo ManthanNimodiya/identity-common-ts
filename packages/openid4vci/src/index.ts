@@ -18,6 +18,7 @@ export type {
 } from './credential-request/credential-response'
 export type { ParseCredentialRequestReturn } from './credential-request/parse-credential-request'
 export type {
+  CredentialRequestEncryption,
   RetrieveCredentialsResponseNotOk,
   RetrieveCredentialsResponseOk,
 } from './credential-request/retrieve-credentials'
