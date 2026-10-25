@@ -2,7 +2,7 @@ import Crypto from 'node:crypto'
 import { hasher as digest, generateSalt } from '@owf/crypto'
 import { createHashMapping, type DisclosureFrame, SDJwt, type Signer, type Verifier } from '@sd-jwt/core'
 import { describe, expect, test } from 'vitest'
-import { SDJwtVcInstance, type TypeMetadataFormat, verifyClaimsAgainstTypeMetadata } from '..'
+import { type SDJWTVCConfig, SDJwtVcInstance, type TypeMetadataFormat, verifyClaimsAgainstTypeMetadata } from '..'
 
 const generateKeyPair = () => {
   const { publicKey, privateKey } = Crypto.generateKeyPairSync('ed25519')
@@ -18,6 +18,16 @@ const generateKeyPair = () => {
 }
 
 const { signer, verifier } = generateKeyPair()
+
+const createInstance = (config: SDJWTVCConfig = {}) =>
+  new SDJwtVcInstance({
+    signer,
+    verifier,
+    hasher: digest,
+    saltGenerator: generateSalt,
+    signAlg: 'EdDSA',
+    ...config,
+  })
 
 describe('SD-JWT VC Type Metadata Verification', () => {
   const pidTypeMetadata: TypeMetadataFormat = {
@@ -39,13 +49,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   }
 
   test('returns empty verification errors when presented VC matches type metadata perfectly', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -82,13 +86,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('detects extra claims not declared in type metadata', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -109,14 +107,8 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     expect(result.extraClaims).toEqual([['unlisted_claim']])
   })
 
-  test('reports absent mandatory claims that may be selectively disclosable as undisclosed', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+  test('reports an absent mandatory claim that could not have been withheld as missing', async () => {
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -132,18 +124,12 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const compact = await sdJwtVc.issue(payload, disclosureFrame)
     const result = await sdJwtVc.verifyTypeMetadata(compact, pidTypeMetadata)
 
-    expect(result.missingMandatoryClaims).toEqual([])
-    expect(result.undisclosedMandatoryClaims).toEqual([['given_name']])
+    expect(result.missingMandatoryClaims).toEqual([['given_name']])
+    expect(result.undisclosedMandatoryClaims).toEqual([])
   })
 
   test('reports mandatory claims withheld in a presentation as undisclosed', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -162,13 +148,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('detects missing mandatory claims that must not be selectively disclosable', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -184,18 +164,12 @@ describe('SD-JWT VC Type Metadata Verification', () => {
     const compact = await sdJwtVc.issue({ vct: 'urn:x', iss: 'https://issuer.example.com' })
     const result = await sdJwtVc.verifyTypeMetadata(compact, metadata)
 
-    expect(result.missingMandatoryClaims).toEqual([['document_number']])
-    expect(result.undisclosedMandatoryClaims).toEqual([['address', 'country']])
+    expect(result.missingMandatoryClaims).toEqual([['document_number'], ['address', 'country']])
+    expect(result.undisclosedMandatoryClaims).toEqual([])
   })
 
   test('detects invalid non-selectively disclosable claims (presented plain when sd: "always" is required)', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -216,13 +190,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('detects invalid selectively disclosable claims (presented via disclosure when sd: "never" is required)', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const payload = {
       vct: 'http://example.com/pid',
@@ -243,12 +211,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('automatically performs type metadata verification in verify and safeVerify when loadTypeMetadataFormat is configured', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
+    const sdJwtVc = createInstance({
       loadTypeMetadataFormat: true,
       vctFetcher: async (vct) => {
         if (vct === 'http://example.com/pid') {
@@ -286,13 +249,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('verifies nested objects and array element claims correctly with verifyClaimsAgainstTypeMetadata', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'http://example.com/nested',
@@ -326,13 +283,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('reports only the topmost undeclared claim and covers descendants of declared leaf claims', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -353,13 +304,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('detects sd: "always" violations on elements of a partially presented array', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -400,13 +345,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('detects sd: "never" violations on elements of an array', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -419,13 +358,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('treats plain children of a selectively disclosed parent as not selectively disclosable', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -446,13 +379,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('does not treat digit-only object keys as array indices', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const metadata: TypeMetadataFormat = {
       vct: 'urn:x',
@@ -465,13 +392,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('rejects type metadata for a different vct', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
-    })
+    const sdJwtVc = createInstance()
 
     const compact = await sdJwtVc.issue({ vct: 'urn:x', iss: 'https://issuer.example.com' })
     await expect(sdJwtVc.verifyTypeMetadata(compact, { vct: 'urn:other', claims: [] })).rejects.toThrow(
@@ -487,12 +408,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
   })
 
   test('does not report a duplicate error in safeVerify when the SD-JWT is invalid', async () => {
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
+    const sdJwtVc = createInstance({
       loadTypeMetadataFormat: true,
       vctFetcher: async () => ({ vct: 'urn:x', claims: [] }),
     })
@@ -534,12 +450,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       ],
     }
 
-    const sdJwtVc = new SDJwtVcInstance({
-      signer,
-      verifier,
-      hasher: digest,
-      saltGenerator: generateSalt,
-      signAlg: 'EdDSA',
+    const sdJwtVc = createInstance({
       loadTypeMetadataFormat: true,
       vctFetcher: async (vct) => {
         if (vct === 'http://example.com/employee-credential') {
@@ -585,7 +496,7 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       _sd: ['given_name', 'employee_id'],
     })
     const missingBaseRes = await sdJwtVc.verify(missingBaseCompact)
-    expect(missingBaseRes.typeMetadataVerification?.undisclosedMandatoryClaims).toEqual([['family_name']])
+    expect(missingBaseRes.typeMetadataVerification?.missingMandatoryClaims).toEqual([['family_name']])
 
     const directVerifyRes = await sdJwtVc.verifyTypeMetadata(compact, extendingMetadata)
     expect(directVerifyRes).toEqual({
@@ -595,5 +506,90 @@ describe('SD-JWT VC Type Metadata Verification', () => {
       invalidNonSelectivelyDisclosableClaims: [],
       invalidSelectivelyDisclosableClaims: [],
     })
+  })
+
+  test('checks a mandatory claim under an array path in every element', async () => {
+    const metadata: TypeMetadataFormat = {
+      vct: 'urn:degrees',
+      claims: [
+        { path: ['degrees'], sd: 'never' },
+        { path: ['degrees', null], sd: 'never' },
+        { path: ['degrees', null, 'type'], sd: 'never', mandatory: true },
+        { path: ['degrees', null, 'name'], sd: 'never' },
+      ],
+    }
+    const sdJwtVc = createInstance()
+
+    const compact = await sdJwtVc.issue({
+      vct: 'urn:degrees',
+      iss: 'https://issuer.example.com',
+      degrees: [{ type: 'BSc', name: 'a' }, { name: 'b' }],
+    })
+    const result = await sdJwtVc.verifyTypeMetadata(compact, metadata)
+
+    expect(result.missingMandatoryClaims).toEqual([['degrees', null, 'type']])
+  })
+
+  test('only reports an absent mandatory claim as undisclosed when its parent withholds a disclosure', async () => {
+    const metadata: TypeMetadataFormat = {
+      vct: 'urn:address',
+      claims: [
+        { path: ['address'], sd: 'never' },
+        { path: ['address', 'country'], sd: 'always', mandatory: true },
+        { path: ['address', 'locality'], sd: 'always' },
+      ],
+    }
+    const sdJwtVc = createInstance()
+
+    const empty = await sdJwtVc.issue({ vct: 'urn:address', iss: 'https://issuer.example.com', address: {} })
+    const emptyResult = await sdJwtVc.verifyTypeMetadata(empty, metadata)
+    expect(emptyResult.missingMandatoryClaims).toEqual([['address', 'country']])
+    expect(emptyResult.undisclosedMandatoryClaims).toEqual([])
+
+    const payload = {
+      vct: 'urn:address',
+      iss: 'https://issuer.example.com',
+      address: { country: 'DE', locality: 'Berlin' },
+    }
+    const compact = await sdJwtVc.issue(payload, { address: { _sd: ['country', 'locality'] } })
+    const presentation = await sdJwtVc.present<typeof payload>(compact, { address: { locality: true } })
+    const presentationResult = await sdJwtVc.verifyTypeMetadata(presentation, metadata)
+    expect(presentationResult.missingMandatoryClaims).toEqual([])
+    expect(presentationResult.undisclosedMandatoryClaims).toEqual([['address', 'country']])
+  })
+
+  test('does not report extra claims for type metadata without claims', async () => {
+    const sdJwtVc = createInstance()
+    const compact = await sdJwtVc.issue(
+      { vct: 'urn:x', iss: 'https://issuer.example.com', given_name: 'John', address: { locality: 'Berlin' } },
+      { _sd: ['given_name'] }
+    )
+
+    const result = await sdJwtVc.verifyTypeMetadata(compact, { vct: 'urn:x' })
+
+    expect(result.extraClaims).toEqual([])
+  })
+
+  test('verify rejects fetched type metadata for a different vct', async () => {
+    const sdJwtVc = createInstance({
+      loadTypeMetadataFormat: true,
+      vctFetcher: async () => ({ vct: 'urn:y' }),
+    })
+    const compact = await sdJwtVc.issue({ vct: 'urn:x', iss: 'https://issuer.example.com' })
+
+    await expect(sdJwtVc.verify(compact)).rejects.toThrow("Type metadata fetched for vct 'urn:x' describes vct 'urn:y'")
+  })
+
+  test('does not treat type metadata with a mergedTypeMetadata key as resolved', async () => {
+    const sdJwtVc = createInstance()
+    const compact = await sdJwtVc.issue({ vct: 'urn:x', iss: 'https://issuer.example.com' })
+
+    const result = await sdJwtVc.verifyTypeMetadata(compact, {
+      vct: 'urn:x',
+      claims: [{ path: ['iss'] }],
+      mergedTypeMetadata: 'unrelated',
+    } as TypeMetadataFormat)
+
+    expect(result.extraClaims).toEqual([])
   })
 })

@@ -11,6 +11,7 @@ import {
 } from '@owf/token-status-list'
 import {
   createHashMapping,
+  type Disclosure,
   type DisclosureFrame,
   ensureError,
   getJwtTimeValidationOptions,
@@ -142,7 +143,11 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
       const resolvedTypeMetadata = await this.fetchVct(result)
       result.typeMetadata = resolvedTypeMetadata
       if (resolvedTypeMetadata) {
-        result.typeMetadataVerification = await this.verifyTypeMetadata(encodedSDJwt, resolvedTypeMetadata)
+        result.typeMetadataVerification = await this.checkTypeMetadata(
+          await this.decodeForTypeMetadata(encodedSDJwt),
+          resolvedTypeMetadata,
+          { validateDisclosures: false }
+        )
       }
     }
     return result
@@ -219,7 +224,11 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
           if (result) {
             result.typeMetadata = resolvedTypeMetadata
             if (resolvedTypeMetadata && baseResult.success) {
-              result.typeMetadataVerification = await this.verifyTypeMetadata(encodedSDJwt, resolvedTypeMetadata)
+              result.typeMetadataVerification = await this.checkTypeMetadata(
+                await this.decodeForTypeMetadata(encodedSDJwt),
+                resolvedTypeMetadata,
+                { validateDisclosures: false }
+              )
             }
           }
         } catch (e) {
@@ -256,44 +265,73 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
     }
   }
 
+  /**
+   * Verifies the claims of an SD-JWT VC against its type metadata.
+   *
+   * @param encodedSDJwt The encoded SD-JWT VC or presentation.
+   * @param typeMetadata The type metadata to verify against. Type metadata that extends other type metadata is
+   * resolved first. When not provided, the type metadata of the SD-JWT VC is fetched.
+   * @returns The claims that do not conform to the type metadata.
+   * @throws SDJWTException when the type metadata cannot be resolved, describes a different vct, or the disclosures
+   * are invalid.
+   */
   async verifyTypeMetadata(
     encodedSDJwt: string,
     typeMetadata?: ResolvedTypeMetadata | TypeMetadataFormat
   ): Promise<TypeMetadataVerificationResult> {
-    if (!this.userConfig.hasher) {
-      throw new SDJWTException('Hasher not found')
-    }
-    const hasher = this.userConfig.hasher
+    const sdjwt = await this.decodeForTypeMetadata(encodedSDJwt)
 
-    const sdjwt = await SDJwt.fromEncode(encodedSDJwt, hasher)
-    if (!sdjwt.jwt?.payload) {
-      throw new SDJWTException('Invalid SD JWT: missing payload')
-    }
-
-    let resolvedMetadata = typeMetadata ?? (await this.getVct(encodedSDJwt))
+    const resolvedMetadata = typeMetadata
+      ? await this.toResolvedTypeMetadata(typeMetadata)
+      : await this.getVct(encodedSDJwt)
     if (!resolvedMetadata) {
       throw new SDJWTException('Type metadata not found or could not be resolved')
     }
 
-    const metadataVct =
-      'mergedTypeMetadata' in resolvedMetadata
-        ? (resolvedMetadata as ResolvedTypeMetadata).vctValues[0]
-        : resolvedMetadata.vct
-    if (sdjwt.jwt.payload.vct !== metadataVct) {
+    const vct = sdjwt.jwt?.payload?.vct
+    if (vct !== resolvedMetadata.vctValues[0]) {
       throw new SDJWTException(
-        `Type metadata vct '${metadataVct}' does not match the vct '${sdjwt.jwt.payload.vct}' of the SD-JWT VC`
+        `Type metadata vct '${resolvedMetadata.vctValues[0]}' does not match the vct '${vct}' of the SD-JWT VC`
       )
     }
 
-    if (!('mergedTypeMetadata' in resolvedMetadata) && resolvedMetadata.extends) {
-      resolvedMetadata = await this.resolveVctExtendsChain(resolvedMetadata)
+    return this.checkTypeMetadata(sdjwt, resolvedMetadata, { validateDisclosures: true })
+  }
+
+  private async decodeForTypeMetadata(encodedSDJwt: string) {
+    if (!this.userConfig.hasher) {
+      throw new SDJWTException('Hasher not found')
+    }
+    const sdjwt = await SDJwt.fromEncode(encodedSDJwt, this.userConfig.hasher)
+    if (!sdjwt.jwt?.payload) {
+      throw new SDJWTException('Invalid SD JWT: missing payload')
+    }
+    return sdjwt
+  }
+
+  private async checkTypeMetadata(
+    sdjwt: SDJwt,
+    resolvedMetadata: ResolvedTypeMetadata,
+    { validateDisclosures }: { validateDisclosures: boolean }
+  ): Promise<TypeMetadataVerificationResult> {
+    const hasher = this.userConfig.hasher
+    if (!hasher || !sdjwt.jwt?.payload) {
+      throw new SDJWTException('Invalid SD JWT: missing payload')
     }
 
     const { _sd_alg, payload } = getSDAlgAndPayload(sdjwt.jwt.payload)
     const disclosures = await createHashMapping(sdjwt.disclosures ?? [], { hasher, alg: _sd_alg })
-    unpackObj(payload, disclosures)
+    if (validateDisclosures) assertDisclosuresReferenced(payload, disclosures)
 
-    return verifyClaimsAgainstTypeMetadata(resolvedMetadata, payload, disclosures)
+    return verifyClaimsAgainstTypeMetadata(resolvedMetadata.mergedTypeMetadata, payload, disclosures)
+  }
+
+  private async toResolvedTypeMetadata(
+    typeMetadata: ResolvedTypeMetadata | TypeMetadataFormat
+  ): Promise<ResolvedTypeMetadata> {
+    if (isResolvedTypeMetadata(typeMetadata)) return typeMetadata
+    if (typeMetadata.extends) return this.resolveVctExtendsChain(typeMetadata)
+    return { mergedTypeMetadata: typeMetadata, typeMetadataChain: [typeMetadata], vctValues: [typeMetadata.vct] }
   }
 
   /**
@@ -665,4 +703,20 @@ export class SDJwtVcInstance<T = unknown> extends SDJwtInstance<SdJwtVcPayload, 
   public config(newConfig: SDJWTVCConfig<T>) {
     super.config(newConfig)
   }
+}
+
+function isResolvedTypeMetadata(
+  typeMetadata: ResolvedTypeMetadata | TypeMetadataFormat
+): typeMetadata is ResolvedTypeMetadata {
+  const candidate = typeMetadata as Partial<ResolvedTypeMetadata>
+  return (
+    Array.isArray(candidate.typeMetadataChain) &&
+    Array.isArray(candidate.vctValues) &&
+    typeof candidate.mergedTypeMetadata === 'object' &&
+    candidate.mergedTypeMetadata !== null
+  )
+}
+
+function assertDisclosuresReferenced(payload: Record<string, unknown>, disclosures: Record<string, Disclosure>) {
+  unpackObj(payload, disclosures)
 }

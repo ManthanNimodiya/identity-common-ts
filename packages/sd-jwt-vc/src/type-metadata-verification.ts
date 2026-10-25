@@ -1,5 +1,5 @@
 import { type Disclosure, SD_DIGEST, SD_LIST_KEY } from '@sd-jwt/core'
-import type { ClaimPath, ResolvedTypeMetadata, TypeMetadataFormat } from './sd-jwt-vc-type-metadata-format'
+import type { Claim, ClaimPath, TypeMetadataFormat } from './sd-jwt-vc-type-metadata-format'
 
 export type TypeMetadataVerificationResult = {
   extraClaims: ClaimPath[]
@@ -84,6 +84,67 @@ function collectPresentClaims(payload: Record<string, unknown>, disclosures: Rec
   return claims
 }
 
+type ClaimStatus = 'present' | 'missing' | 'undisclosed'
+
+function childEntries(node: unknown, segment: string | null, disclosures: Record<string, Disclosure>) {
+  const present: Array<{ index: string | number; value: unknown }> = []
+  let hidden = false
+
+  if (segment === null) {
+    if (!Array.isArray(node)) return { present, hidden }
+    node.forEach((element, index) => {
+      if (!isArrayElementDigest(element)) {
+        present.push({ index, value: element })
+        return
+      }
+      const disclosure = disclosures[element[SD_LIST_KEY]]
+      if (disclosure) present.push({ index, value: disclosure.value })
+      else hidden = true
+    })
+    return { present, hidden }
+  }
+
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) return { present, hidden }
+  const record = node as Record<string, unknown>
+  if (segment !== SD_DIGEST && segment in record) present.push({ index: segment, value: record[segment] })
+
+  const digests = Array.isArray(record[SD_DIGEST]) ? record[SD_DIGEST] : []
+  for (const digest of digests) {
+    const disclosure = typeof digest === 'string' ? disclosures[digest] : undefined
+    if (!disclosure) hidden = true
+    else if (disclosure.key === segment) present.push({ index: segment, value: disclosure.value })
+  }
+  return { present, hidden }
+}
+
+function mandatoryClaimStatus(
+  claim: Claim,
+  metadataClaims: Claim[],
+  packedPayload: Record<string, unknown>,
+  disclosures: Record<string, Disclosure>
+): ClaimStatus {
+  const sdOf = (length: number) =>
+    metadataClaims.find((mc) => claimPathsEqual(mc.path, claim.path.slice(0, length)))?.sd
+
+  const walk = (node: unknown, depth: number): ClaimStatus => {
+    if (depth === claim.path.length) return 'present'
+
+    const { present, hidden } = childEntries(node, claim.path[depth], disclosures)
+    let status: ClaimStatus = 'present'
+    for (const child of present) {
+      const childStatus = walk(child.value, depth + 1)
+      if (childStatus === 'missing') return 'missing'
+      if (childStatus === 'undisclosed') status = 'undisclosed'
+    }
+
+    if (claim.path[depth] === null || present.length > 0) return status
+
+    return hidden && sdOf(depth + 1) !== 'never' ? 'undisclosed' : 'missing'
+  }
+
+  return walk(packedPayload, 0)
+}
+
 function toCanonicalClaimPath(path: Array<string | number>): ClaimPath {
   return path.map((seg) => (typeof seg === 'number' ? null : seg))
 }
@@ -96,17 +157,22 @@ function createClaimPathSet() {
   }
 }
 
+/**
+ * Verifies the claims of an SD-JWT VC against type metadata.
+ *
+ * @param typeMetadata The type metadata to verify against. When it extends other type metadata, pass the merged
+ * type metadata of the resolved chain.
+ * @param packedPayload The payload of the SD-JWT VC as issued, with the `_sd` digests still in place. The payload
+ * returned by `verify` is unpacked and cannot be used here.
+ * @param disclosures The disclosures of the SD-JWT VC, keyed by their digest.
+ */
 export function verifyClaimsAgainstTypeMetadata(
-  typeMetadata: ResolvedTypeMetadata | TypeMetadataFormat,
-  payload: Record<string, unknown>,
+  typeMetadata: TypeMetadataFormat,
+  packedPayload: Record<string, unknown>,
   disclosures: Record<string, Disclosure>
 ): TypeMetadataVerificationResult {
-  const format =
-    'mergedTypeMetadata' in typeMetadata
-      ? (typeMetadata as ResolvedTypeMetadata).mergedTypeMetadata
-      : (typeMetadata as TypeMetadataFormat)
-  const metadataClaims = format.claims ?? []
-  const presentClaims = collectPresentClaims(payload, disclosures)
+  const metadataClaims = typeMetadata.claims ?? []
+  const presentClaims = collectPresentClaims(packedPayload, disclosures)
 
   const extraClaims = createClaimPathSet()
   const missingMandatoryClaims = createClaimPathSet()
@@ -135,7 +201,7 @@ export function verifyClaimsAgainstTypeMetadata(
     const matchingMetadataClaims = metadataClaims.filter((mc) => claimPathMatches(mc.path, presentClaim.path))
 
     if (matchingMetadataClaims.length === 0) {
-      if (!isCovered(presentClaim.path)) extraClaims.add(toCanonicalClaimPath(presentClaim.path))
+      if (typeMetadata.claims && !isCovered(presentClaim.path)) extraClaims.add(toCanonicalClaimPath(presentClaim.path))
       continue
     }
 
@@ -148,16 +214,11 @@ export function verifyClaimsAgainstTypeMetadata(
     }
   }
 
-  const isPresent = (path: ClaimPath) => presentClaims.some((pc) => claimPathMatches(path, pc.path))
   for (const metadataClaim of metadataClaims) {
-    if (!metadataClaim.mandatory || isPresent(metadataClaim.path)) continue
-
-    const parentPath = metadataClaim.path.slice(0, -1)
-    if (metadataClaim.sd === 'never' && (parentPath.length === 0 || isPresent(parentPath))) {
-      missingMandatoryClaims.add(metadataClaim.path)
-    } else {
-      undisclosedMandatoryClaims.add(metadataClaim.path)
-    }
+    if (!metadataClaim.mandatory) continue
+    const status = mandatoryClaimStatus(metadataClaim, metadataClaims, packedPayload, disclosures)
+    if (status === 'missing') missingMandatoryClaims.add(metadataClaim.path)
+    else if (status === 'undisclosed') undisclosedMandatoryClaims.add(metadataClaim.path)
   }
 
   const extraClaimPaths = extraClaims.values()
